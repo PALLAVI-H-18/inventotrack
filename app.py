@@ -78,6 +78,85 @@ def add_product():
         "is_restricted": bool(is_restricted)
     }), 201
 
+# ---------------------------------------------------------
+# POST /batches - add a new stock batch for a product
+# ---------------------------------------------------------
+@app.route("/batches", methods=["POST"])
+def add_batch():
+    data = request.get_json()
 
+    required_fields = ["product_id", "batch_no", "quantity_received",
+                        "price_per_unit", "purchase_date", "expiry_date"]
+    missing = [f for f in required_fields if not data.get(f)]
+    if missing:
+        return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
+
+    conn = get_db_connection()
+
+    # confirm the product actually exists before attaching a batch to it
+    product = conn.execute(
+        "SELECT * FROM products WHERE product_id = ?", (data["product_id"],)
+    ).fetchone()
+    if product is None:
+        conn.close()
+        return jsonify({"error": "Product not found"}), 404
+
+    quantity_received = data["quantity_received"]
+    if quantity_received <= 0:
+        conn.close()
+        return jsonify({"error": "quantity_received must be positive"}), 400
+
+    cur = conn.execute("""
+        INSERT INTO batches (product_id, supplier_id, batch_no, quantity_received,
+                              quantity_remaining, price_per_unit, purchase_date, expiry_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        data["product_id"],
+        data.get("supplier_id"),
+        data["batch_no"],
+        quantity_received,
+        quantity_received,          # quantity_remaining starts equal to quantity_received
+        data["price_per_unit"],
+        data["purchase_date"],
+        data["expiry_date"]
+    ))
+    conn.commit()
+    new_batch_id = cur.lastrowid
+    conn.close()
+
+    return jsonify({
+        "message": "Batch added successfully",
+        "batch_id": new_batch_id
+    }), 201
+
+
+# ---------------------------------------------------------
+# GET /products/<id>/batches - list all batches for one product
+# ---------------------------------------------------------
+@app.route("/products/<int:product_id>/batches", methods=["GET"])
+def get_batches_for_product(product_id):
+    conn = get_db_connection()
+
+    product = conn.execute(
+        "SELECT * FROM products WHERE product_id = ?", (product_id,)
+    ).fetchone()
+    if product is None:
+        conn.close()
+        return jsonify({"error": "Product not found"}), 404
+
+    rows = conn.execute("""
+        SELECT batch_id, batch_no, quantity_received, quantity_remaining,
+               price_per_unit, purchase_date, expiry_date, supplier_id
+        FROM batches
+        WHERE product_id = ?
+        ORDER BY expiry_date ASC
+    """, (product_id,)).fetchall()
+    conn.close()
+
+    batches = [dict(row) for row in rows]
+    return jsonify({
+        "product_name": product["name"],
+        "batches": batches
+    })
 if __name__ == "__main__":
     app.run(debug=True)
