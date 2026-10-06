@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import sqlite3
+from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
@@ -158,5 +159,103 @@ def get_batches_for_product(product_id):
         "product_name": product["name"],
         "batches": batches
     })
+    
+# ---------------------------------------------------------
+# POST /sales - record a sale with FIFO batch deduction
+# ---------------------------------------------------------
+
+# ---------------------------------------------------------
+# POST /sales - record a sale, deduct stock using FIFO
+# ---------------------------------------------------------
+@app.route("/sales", methods=["POST"])
+def record_sale():
+    data = request.get_json()
+
+    product_id = data.get("product_id")
+    quantity_sold = data.get("quantity_sold")
+    sold_by = data.get("sold_by")          # user_id, optional for now until auth is built
+    buyer_id_proof = data.get("buyer_id_proof")  # only needed for restricted products
+
+    if not product_id or not quantity_sold or quantity_sold <= 0:
+        return jsonify({"error": "product_id and a positive quantity_sold are required"}), 400
+
+    conn = get_db_connection()
+
+    # Step A: confirm product exists, and check if it's restricted
+    product = conn.execute(
+        "SELECT * FROM products WHERE product_id = ?", (product_id,)
+    ).fetchone()
+    if product is None:
+        conn.close()
+        return jsonify({"error": "Product not found"}), 404
+
+    # Step B: enforce compliance - restricted products need buyer ID
+    if product["is_restricted"] and not buyer_id_proof:
+        conn.close()
+        return jsonify({
+            "error": "This product is restricted. Buyer identification is required to complete this sale."
+        }), 400
+
+    # Step C: get all usable batches - not expired, has stock - oldest expiry first
+    today = datetime.today().strftime("%Y-%m-%d")
+    batches = conn.execute("""
+        SELECT batch_id, quantity_remaining, expiry_date
+        FROM batches
+        WHERE product_id = ? AND quantity_remaining > 0 AND expiry_date >= ?
+        ORDER BY expiry_date ASC
+    """, (product_id, today)).fetchall()
+
+    # Step D: check total available stock before touching anything
+    total_available = sum(b["quantity_remaining"] for b in batches)
+    if total_available < quantity_sold:
+        conn.close()
+        return jsonify({
+            "error": f"Not enough stock. Only {total_available} units available (non-expired)."
+        }), 400
+
+    # Step E: deduct quantity across batches, oldest first (the actual FIFO logic)
+    remaining_to_sell = quantity_sold
+    batches_used = []   # keep track for the response, and to insert sale records
+
+    try:
+        for batch in batches:
+            if remaining_to_sell <= 0:
+                break
+
+            take_from_this_batch = min(batch["quantity_remaining"], remaining_to_sell)
+            new_remaining = batch["quantity_remaining"] - take_from_this_batch
+
+            conn.execute("""
+                UPDATE batches SET quantity_remaining = ? WHERE batch_id = ?
+            """, (new_remaining, batch["batch_id"]))
+
+            conn.execute("""
+                INSERT INTO sales (product_id, batch_id, quantity_sold, sale_date, sold_by, buyer_id_proof)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (product_id, batch["batch_id"], take_from_this_batch, today, sold_by, buyer_id_proof))
+
+            batches_used.append({
+                "batch_id": batch["batch_id"],
+                "quantity_taken": take_from_this_batch,
+                "remaining_in_batch": new_remaining
+            })
+
+            remaining_to_sell -= take_from_this_batch
+
+        conn.commit()   # only saves if everything above succeeded without error
+
+    except Exception as e:
+        conn.rollback()  # undo everything if something went wrong halfway
+        conn.close()
+        return jsonify({"error": f"Sale failed, nothing was changed: {str(e)}"}), 500
+
+    conn.close()
+
+    return jsonify({
+        "message": "Sale recorded successfully",
+        "product_name": product["name"],
+        "total_quantity_sold": quantity_sold,
+        "batches_used": batches_used
+    }), 201
 if __name__ == "__main__":
     app.run(debug=True)
