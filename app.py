@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 CORS(app)
@@ -16,28 +16,6 @@ def get_db_connection():
 @app.route("/")
 def home():
     return jsonify({"message": "InventoTrack backend is running"})
-
-
-# ---------------------------------------------------------
-# GET /products - list all products with total remaining stock
-# ---------------------------------------------------------
-@app.route("/products", methods=["GET"])
-def get_products():
-    conn = get_db_connection()
-    rows = conn.execute("""
-        SELECT p.product_id, p.name, p.brand, p.category, p.season,
-               p.min_stock_level, p.is_restricted,
-               COALESCE(SUM(b.quantity_remaining), 0) AS total_quantity
-        FROM products p
-        LEFT JOIN batches b ON p.product_id = b.product_id
-        GROUP BY p.product_id
-    """).fetchall()
-    conn.close()
-
-    products = [dict(row) for row in rows]
-    return jsonify(products)
-
-
 # ---------------------------------------------------------
 # POST /products - add a new product (checks restricted list)
 # ---------------------------------------------------------
@@ -49,6 +27,39 @@ def add_product():
         return jsonify({"error": "Product name is required"}), 400
 
     conn = get_db_connection()
+    # ---------------------------------------------------------
+# Helpers used by products + dashboard routes
+# ---------------------------------------------------------
+def today_str():
+    return datetime.today().strftime("%Y-%m-%d")
+
+
+def stock_status(quantity, min_level):
+    if quantity <= 0:
+        return "out_of_stock"
+    if quantity <= min_level:
+        return "low_stock"
+    return "healthy"
+
+
+def get_products_with_stock(conn):
+    """Every product with its NON-EXPIRED stock and a status label."""
+    rows = conn.execute("""
+        SELECT p.product_id, p.name, p.brand, p.category, p.season,
+               p.min_stock_level, p.is_restricted,
+               COALESCE(SUM(b.quantity_remaining), 0) AS total_quantity
+        FROM products p
+        LEFT JOIN batches b
+               ON p.product_id = b.product_id AND b.expiry_date >= ?
+        GROUP BY p.product_id
+    """, (today_str(),)).fetchall()
+
+    products = []
+    for row in rows:
+        item = dict(row)
+        item["status"] = stock_status(item["total_quantity"], item["min_stock_level"])
+        products.append(item)
+    return products
 
     # check against restricted_pesticides table
     match = conn.execute("""
@@ -258,7 +269,114 @@ def record_sale():
         "batches_used": batches_used
     }), 201
 import os
+# ---------------------------------------------------------
+# GET /products - list all products (non-expired stock + status)
+# ---------------------------------------------------------
+@app.route("/products", methods=["GET"])
+def get_products():
+    conn = get_db_connection()
+    products = get_products_with_stock(conn)
+    conn.close()
+    return jsonify(products)
 
+
+# ---------------------------------------------------------
+# GET /dashboard/summary - numbers for the dashboard cards
+# ---------------------------------------------------------
+@app.route("/dashboard/summary", methods=["GET"])
+def dashboard_summary():
+    conn = get_db_connection()
+    today = today_str()
+    soon = (datetime.today() + timedelta(days=30)).strftime("%Y-%m-%d")
+
+    products = get_products_with_stock(conn)
+
+    # value of stock that can actually be sold
+    valid_value = conn.execute("""
+        SELECT COALESCE(SUM(quantity_remaining * price_per_unit), 0) AS total
+        FROM batches
+        WHERE quantity_remaining > 0 AND expiry_date >= ?
+    """, (today,)).fetchone()["total"]
+
+    # value sitting in expired batches (money lost)
+    expired = conn.execute("""
+        SELECT COUNT(*) AS batches,
+               COALESCE(SUM(quantity_remaining * price_per_unit), 0) AS value
+        FROM batches
+        WHERE quantity_remaining > 0 AND expiry_date < ?
+    """, (today,)).fetchone()
+
+    expiring_soon = conn.execute("""
+        SELECT COUNT(*) AS c FROM batches
+        WHERE quantity_remaining > 0 AND expiry_date >= ? AND expiry_date <= ?
+    """, (today, soon)).fetchone()["c"]
+    conn.close()
+
+    return jsonify({
+        "total_products": len(products),
+        "healthy_count": sum(1 for p in products if p["status"] == "healthy"),
+        "low_stock_count": sum(1 for p in products if p["status"] == "low_stock"),
+        "out_of_stock_count": sum(1 for p in products if p["status"] == "out_of_stock"),
+        "expiring_soon_count": expiring_soon,
+        "expired_batch_count": expired["batches"],
+        "total_inventory_value": round(valid_value, 2),
+        "expired_stock_value": round(expired["value"], 2)
+    })
+
+
+# ---------------------------------------------------------
+# GET /dashboard/low-stock
+# ---------------------------------------------------------
+@app.route("/dashboard/low-stock", methods=["GET"])
+def dashboard_low_stock():
+    conn = get_db_connection()
+    products = get_products_with_stock(conn)
+    conn.close()
+    return jsonify([p for p in products if p["status"] == "low_stock"])
+
+
+# ---------------------------------------------------------
+# GET /dashboard/out-of-stock
+# ---------------------------------------------------------
+@app.route("/dashboard/out-of-stock", methods=["GET"])
+def dashboard_out_of_stock():
+    conn = get_db_connection()
+    products = get_products_with_stock(conn)
+    conn.close()
+    return jsonify([p for p in products if p["status"] == "out_of_stock"])
+
+
+# ---------------------------------------------------------
+# GET /dashboard/expiring?days=30 - batches expiring soon
+# ---------------------------------------------------------
+@app.route("/dashboard/expiring", methods=["GET"])
+def dashboard_expiring():
+    days = request.args.get("days", 30, type=int)
+    if days < 0:
+        return jsonify({"error": "days must be zero or more"}), 400
+
+    today = datetime.today().date()
+    limit = today + timedelta(days=days)
+
+    conn = get_db_connection()
+    rows = conn.execute("""
+        SELECT b.batch_id, b.batch_no, b.quantity_remaining, b.expiry_date,
+               p.product_id, p.name AS product_name
+        FROM batches b
+        JOIN products p ON b.product_id = p.product_id
+        WHERE b.quantity_remaining > 0
+          AND b.expiry_date >= ? AND b.expiry_date <= ?
+        ORDER BY b.expiry_date ASC
+    """, (today.strftime("%Y-%m-%d"), limit.strftime("%Y-%m-%d"))).fetchall()
+    conn.close()
+
+    result = []
+    for row in rows:
+        item = dict(row)
+        expiry = datetime.strptime(item["expiry_date"], "%Y-%m-%d").date()
+        item["days_left"] = (expiry - today).days
+        result.append(item)
+    return jsonify(result)
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
