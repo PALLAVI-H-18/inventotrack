@@ -1,0 +1,20 @@
+$kind: http-request
+url: "{{base_url}}/batches"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "product_id": 1,
+      "batch_no": "B042",
+      "quantity_received": 30,
+      "price_per_unit": 400,
+      "purchase_date": "2026-09-25"
+    }
+scripts:
+  - type: afterResponse
+    code: pm.test('Status is 400', function () { pm.response.to.have.status(400); });
+    language: text/javascript
+order: 2000

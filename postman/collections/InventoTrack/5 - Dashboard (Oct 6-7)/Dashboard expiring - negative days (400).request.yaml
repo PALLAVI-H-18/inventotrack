@@ -1,0 +1,10 @@
+$kind: http-request
+url: "{{base_url}}/dashboard/expiring?days=-5"
+method: GET
+queryParams:
+  days: "-5"
+scripts:
+  - type: afterResponse
+    code: pm.test('Status is 400', function () { pm.response.to.have.status(400); });
+    language: text/javascript
+order: 6000

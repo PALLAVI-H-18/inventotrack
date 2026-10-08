@@ -2,6 +2,10 @@
 workspace:
   id: e2465e36-04d0-4c24-8c68-eb0354315d64
 
+cloudResources:
+  collections:
+    ../postman/collections/InventoTrack: 97ee386d-7cc4-4483-a76d-3b72ad810978
+
 # All resources in the `postman/` folder are automatically registered in Local View.
 # Point to additional files outside the `postman/` folder to register them individually. Example:
 #localResources:

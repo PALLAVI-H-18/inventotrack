@@ -1,0 +1,21 @@
+$kind: http-request
+description: Expect is_restricted false. Running again creates a duplicate row.
+url: "{{base_url}}/products"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "name": "Neem Oil 1500 ppm",
+      "brand": "AgriCorp",
+      "category": "Bio-pesticide",
+      "season": "Year-round",
+      "min_stock_level": 10
+    }
+scripts:
+  - type: afterResponse
+    code: pm.test('Status is 201', function () { pm.response.to.have.status(201); });
+    language: text/javascript
+order: 2000

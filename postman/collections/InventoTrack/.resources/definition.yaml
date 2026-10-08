@@ -1,0 +1,4 @@
+$kind: collection
+description: All InventoTrack API tests from Day 1 to the dashboard APIs.
+variables:
+  base_url: http://127.0.0.1:5000

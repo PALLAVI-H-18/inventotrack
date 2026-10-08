@@ -1,0 +1,9 @@
+$kind: http-request
+name: http://127.0.0.1:5000/dashboard/out-of-stock
+description: ""
+url: http://127.0.0.1:5000/dashboard/out-of-stock
+method: GET
+body:
+  type: json
+  content: ""
+order: 1166105002381662

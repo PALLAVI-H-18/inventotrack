@@ -1,0 +1,23 @@
+$kind: http-request
+description: Needed before the restricted-sale tests.
+url: "{{base_url}}/batches"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "product_id": 22,
+      "supplier_id": 1,
+      "batch_no": "B999",
+      "quantity_received": 20,
+      "price_per_unit": 500,
+      "purchase_date": "2026-09-01",
+      "expiry_date": "2027-12-31"
+    }
+scripts:
+  - type: afterResponse
+    code: pm.test('Status is 201', function () { pm.response.to.have.status(201); });
+    language: text/javascript
+order: 7000
