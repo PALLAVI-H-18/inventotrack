@@ -257,5 +257,8 @@ def record_sale():
         "total_quantity_sold": quantity_sold,
         "batches_used": batches_used
     }), 201
+import os
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
