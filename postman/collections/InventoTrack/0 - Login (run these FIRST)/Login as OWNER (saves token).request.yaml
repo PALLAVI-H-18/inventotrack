@@ -1,0 +1,22 @@
+$kind: http-request
+description: Saves the token automatically. Every other request uses it.
+url: "{{base_url}}/auth/login"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "email": "owner@inventotrack.com",
+      "password": "Owner@123"
+    }
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Status is 200', function () { pm.response.to.have.status(200); });
+      pm.collectionVariables.set('token', pm.response.json().token);
+    language: text/javascript
+order: 1000

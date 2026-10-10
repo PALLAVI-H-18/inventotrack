@@ -1,0 +1,22 @@
+$kind: http-request
+description: Saves the staff token for the staff tests.
+url: "{{base_url}}/auth/login"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "email": "staff@inventotrack.com",
+      "password": "Staff@123"
+    }
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Status is 200', function () { pm.response.to.have.status(200); });
+      pm.collectionVariables.set('staff_token', pm.response.json().token);
+    language: text/javascript
+order: 2000

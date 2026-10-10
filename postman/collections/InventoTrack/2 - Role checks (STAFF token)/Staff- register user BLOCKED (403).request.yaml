@@ -1,0 +1,23 @@
+$kind: http-request
+name: "Staff: register user BLOCKED (403)"
+url: "{{base_url}}/auth/register"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "name": "X",
+      "email": "q@w.com",
+      "password": "123456"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{staff_token}}"
+scripts:
+  - type: afterResponse
+    code: pm.test('Status is 403', function () { pm.response.to.have.status(403); });
+    language: text/javascript
+order: 4000

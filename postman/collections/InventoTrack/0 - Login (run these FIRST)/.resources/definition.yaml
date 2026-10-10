@@ -1,0 +1,3 @@
+$kind: collection
+description: Run the two login requests before anything else.
+order: 1000

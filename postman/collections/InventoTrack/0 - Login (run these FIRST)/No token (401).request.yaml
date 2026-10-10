@@ -1,0 +1,11 @@
+$kind: http-request
+description: Protected route without a token.
+url: "{{base_url}}/products"
+method: GET
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: pm.test('Status is 401', function () { pm.response.to.have.status(401); });
+    language: text/javascript
+order: 6000

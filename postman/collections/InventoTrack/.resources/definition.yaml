@@ -1,4 +1,19 @@
 $kind: collection
-description: All InventoTrack API tests from Day 1 to the dashboard APIs.
+description: InventoTrack API tests with login. Run folder 0 first.
 variables:
-  base_url: http://127.0.0.1:5000
+  - key: base_url
+    value: http://127.0.0.1:5000
+    disabled: false
+  - key: token
+    value: ""
+    disabled: false
+  - key: staff_token
+    value: ""
+    disabled: false
+  - key: json_web_token_0bmi
+    secret: true
+    disabled: false
+auth:
+  type: bearer
+  credentials:
+    token: "{{json_web_token_0bmi}}"

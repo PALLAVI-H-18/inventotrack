@@ -1,0 +1,22 @@
+$kind: http-request
+url: "{{base_url}}/batches"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "product_id": 20,
+      "supplier_id": 1,
+      "batch_no": "EXPIRED-TEST",
+      "quantity_received": 50,
+      "price_per_unit": 300,
+      "purchase_date": "2025-01-01",
+      "expiry_date": "2025-06-01"
+    }
+scripts:
+  - type: afterResponse
+    code: pm.test('Status is 201', function () { pm.response.to.have.status(201); });
+    language: text/javascript
+order: 5000

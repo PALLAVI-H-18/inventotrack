@@ -1,0 +1,13 @@
+$kind: http-request
+name: "Staff: list products ALLOWED (200)"
+url: "{{base_url}}/products"
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: "{{staff_token}}"
+scripts:
+  - type: afterResponse
+    code: pm.test('Status is 200', function () { pm.response.to.have.status(200); });
+    language: text/javascript
+order: 5000

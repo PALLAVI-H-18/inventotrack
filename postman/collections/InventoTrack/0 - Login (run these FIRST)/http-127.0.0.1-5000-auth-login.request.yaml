@@ -1,0 +1,15 @@
+$kind: http-request
+name: http://127.0.0.1:5000/auth/login
+description: ""
+url: http://127.0.0.1:5000/auth/login
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"email\": \"owner@inventotrack.com\",\r
+
+    \  \"password\": \"Owner@123\"\r
+
+    }"
+order: 7000
