@@ -1,19 +1,12 @@
 $kind: collection
 description: InventoTrack API tests with login. Run folder 0 first.
 variables:
-  - key: base_url
-    value: http://127.0.0.1:5000
-    disabled: false
-  - key: token
-    value: ""
-    disabled: false
-  - key: staff_token
-    value: ""
-    disabled: false
-  - key: json_web_token_0bmi
-    secret: true
-    disabled: false
+  base_url: http://127.0.0.1:5000
+  token: ""
+  staff_token: ""
 auth:
-  type: bearer
-  credentials:
-    token: "{{json_web_token_0bmi}}"
+  - id: 21e9d0f4-7348-43bb-9e2a-0d307ae92db3
+    type: bearer
+    name: bearer auth
+    credentials:
+      token: "{{token}}"

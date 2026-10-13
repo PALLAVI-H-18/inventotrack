@@ -1,0 +1,9 @@
+$kind: http-request
+description: "Owner only. Check summary: with_buyer_id + missing_buyer_id = total_records."
+url: "{{base_url}}/reports/restricted-sales"
+method: GET
+scripts:
+  - type: afterResponse
+    code: pm.test('Status is 200', function () { pm.response.to.have.status(200); });
+    language: text/javascript
+order: 4000

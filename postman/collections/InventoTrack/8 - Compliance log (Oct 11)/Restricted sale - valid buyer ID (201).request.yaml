@@ -1,0 +1,19 @@
+$kind: http-request
+description: Creates a record that will show in the compliance log.
+url: "{{base_url}}/sales"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "product_id": 7,
+      "quantity_sold": 1,
+      "buyer_id_proof": "Aadhaar: XXXX-XXXX-9012"
+    }
+scripts:
+  - type: afterResponse
+    code: pm.test('Status is 201', function () { pm.response.to.have.status(201); });
+    language: text/javascript
+order: 3000

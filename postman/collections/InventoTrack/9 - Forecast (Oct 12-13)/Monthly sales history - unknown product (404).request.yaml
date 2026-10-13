@@ -1,0 +1,8 @@
+$kind: http-request
+url: "{{base_url}}/forecast/history/999"
+method: GET
+scripts:
+  - type: afterResponse
+    code: pm.test('Status is 404', function () { pm.response.to.have.status(404); });
+    language: text/javascript
+order: 2000

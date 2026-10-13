@@ -1,0 +1,19 @@
+$kind: http-request
+description: Spaces only counts as EMPTY. Product 7 = Paraquat (restricted).
+url: "{{base_url}}/sales"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "product_id": 7,
+      "quantity_sold": 1,
+      "buyer_id_proof": "   "
+    }
+scripts:
+  - type: afterResponse
+    code: pm.test('Status is 400', function () { pm.response.to.have.status(400); });
+    language: text/javascript
+order: 1000
