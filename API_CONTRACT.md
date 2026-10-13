@@ -1,265 +1,215 @@
-# InventoTrack API Contract
+InventoTrack API Contract
 
-Base URL (local): `http://127.0.0.1:5000`
-Live URL: `https://invento-track.onrender.com` (database not set up yet, use local for now)
+Base URL (local): http://127.0.0.1:5000 Live URL: https://invento-track.onrender.com (database not set up yet, use local for now)
 
 All requests and responses use JSON. Errors always look like:
 
-```json
+json
 { "error": "message to show the user" }
-```
+Login rules
 
-## Status of each route
+Every route except GET / and POST /auth/login needs a token:
 
-| Route | Status |
-|---|---|
-| GET / | Ready |
-| GET /products | Ready |
-| POST /products | Ready |
-| POST /batches | Ready |
-| GET /products/<id>/batches | Ready |
-| POST /sales | Ready |
-| GET /dashboard/summary | Ready |
-| GET /dashboard/low-stock | Ready |
-| GET /dashboard/out-of-stock | Ready |
-| GET /dashboard/expiring | Ready |
-| POST /auth/register, POST /auth/login | Coming soon |
-| GET /reports/restricted-sales | Coming soon |
-| GET /suggestions/seasonal/<product_id> | Coming soon |
-| GET /reports/inventory/export | Coming soon |
-
----
-
-## Products
-
-### GET /products
-Lists all products. `total_quantity` counts NON-EXPIRED stock only.
-
-Response (200):
-```json
-[
-  {
-    "product_id": 1,
-    "name": "Chlorpyrifos 20% EC",
-    "brand": "AgriCorp",
-    "category": "Insecticide",
-    "season": "Kharif",
-    "min_stock_level": 15,
-    "is_restricted": 0,
-    "total_quantity": 66,
-    "status": "healthy"
-  }
-]
-```
-
-`status` values and suggested colours:
-
-| status | Meaning | Colour |
-|---|---|---|
-| healthy | stock above min_stock_level | green |
-| low_stock | stock between 1 and min_stock_level | amber |
-| out_of_stock | stock is 0 | red |
-
-### POST /products
-Adds a product. If the name matches the restricted list, it is flagged automatically.
-
-Request:
-```json
-{
-  "name": "Neem Oil 1500 ppm",
-  "brand": "AgriCorp",
-  "category": "Bio-pesticide",
-  "season": "Year-round",
-  "min_stock_level": 10
-}
-```
-
-Response (201):
-```json
-{
-  "message": "Product added successfully",
-  "product_id": 21,
-  "is_restricted": false
-}
-```
-
-Error (400) if name is missing: `{ "error": "Product name is required" }`
-
----
-
-## Batches
-
-### POST /batches
-Adds a stock batch to a product. Every batch has its own expiry date.
-
-Request:
-```json
-{
-  "product_id": 1,
-  "supplier_id": 1,
-  "batch_no": "B041",
-  "quantity_received": 60,
-  "price_per_unit": 420,
-  "purchase_date": "2026-09-25",
-  "expiry_date": "2027-06-30"
-}
-```
-
-Required: product_id, batch_no, quantity_received, price_per_unit, purchase_date, expiry_date.
-Optional: supplier_id.
-
-Response (201):
-```json
-{ "message": "Batch added successfully", "batch_id": 41 }
-```
-
-Errors:
-- 400 `{ "error": "Missing required fields: expiry_date" }`
-- 404 `{ "error": "Product not found" }`
-
-### GET /products/<id>/batches
-Lists all batches of one product, soonest expiry first.
-
-Response (200):
-```json
-{
-  "product_name": "Chlorpyrifos 20% EC",
-  "batches": [
-    {
-      "batch_id": 41,
-      "batch_no": "B041",
-      "quantity_received": 60,
-      "quantity_remaining": 45,
-      "price_per_unit": 420.0,
-      "purchase_date": "2026-09-25",
-      "expiry_date": "2027-06-30",
-      "supplier_id": 1
-    }
-  ]
-}
-```
-
-Error (404) if the product does not exist.
-
----
-
-## Sales
-
-### POST /sales
-Records a sale. Stock is deducted oldest-expiry-first (FIFO). Expired batches are never used.
-
-Request:
-```json
-{
-  "product_id": 1,
-  "quantity_sold": 8
-}
-```
-
-For a RESTRICTED product (`is_restricted` = 1), `buyer_id_proof` is mandatory:
-```json
-{
-  "product_id": 22,
-  "quantity_sold": 2,
-  "buyer_id_proof": "Aadhaar: XXXX-XXXX-1234"
-}
-```
-
-Optional: `sold_by` (user id, used after login is added).
-
-Response (201):
-```json
-{
-  "message": "Sale recorded successfully",
-  "product_name": "Chlorpyrifos 20% EC",
-  "total_quantity_sold": 8,
-  "batches_used": [
-    { "batch_id": 41, "quantity_taken": 8, "remaining_in_batch": 37 }
-  ]
-}
-```
-
-Errors (400 unless noted):
-- `{ "error": "product_id and a positive quantity_sold are required" }`
-- `{ "error": "This product is restricted. Buyer identification is required to complete this sale." }`
-- `{ "error": "Not enough stock. Only 22 units available (non-expired)." }`
-- 404 `{ "error": "Product not found" }`
-
-Frontend note: for restricted products, show a required "Buyer ID" field in the sale form and display the error message if the API rejects the sale.
-
----
-
-## Dashboard
-
-### GET /dashboard/summary
-Numbers for the dashboard cards.
-
-Response (200):
-```json
-{
-  "total_products": 22,
-  "healthy_count": 20,
-  "low_stock_count": 0,
-  "out_of_stock_count": 2,
-  "expiring_soon_count": 17,
-  "expired_batch_count": 2,
-  "total_inventory_value": 718402.44,
-  "expired_stock_value": 30000.0
-}
-```
-
-| Field | Meaning |
-|---|---|
-| total_products | number of products |
-| healthy_count, low_stock_count, out_of_stock_count | products by status (these three add up to total_products) |
-| expiring_soon_count | batches with stock that expire within 30 days |
-| expired_batch_count | expired batches that still hold stock |
-| total_inventory_value | rupee value of stock that can be sold |
-| expired_stock_value | rupee value stuck in expired batches |
-
-### GET /dashboard/low-stock
-Array of products (same shape as GET /products) whose status is `low_stock`.
-An empty array `[]` means nothing is low on stock.
-
-### GET /dashboard/out-of-stock
-Array of products (same shape as GET /products) whose status is `out_of_stock`.
-
-### GET /dashboard/expiring?days=30
-Batches that expire within the next N days (default 30), soonest first.
-
-Response (200):
-```json
-[
-  {
-    "batch_id": 27,
-    "batch_no": "B027",
-    "product_id": 14,
-    "product_name": "Metribuzin 70% WP",
-    "quantity_remaining": 5,
-    "expiry_date": "2026-10-15",
-    "days_left": 7
-  }
-]
-```
-
-Error (400) if days is negative: `{ "error": "days must be zero or more" }`
-
----
-
-## Coming soon
-
-### Auth (JWT)
-- `POST /auth/register` creates a user (role: owner or staff)
-- `POST /auth/login` returns a token
-
-After login, send this header on protected requests:
-```
 Authorization: Bearer <token>
-```
+Status	Meaning	What the frontend should do
+401	Not logged in, or token expired	Send the user to the login page
+403	Logged in, but not allowed (staff on an owner route)	Hide or disable that page
 
-### Compliance, forecast and export
-- `GET /reports/restricted-sales` list of restricted sales with buyer proof
-- `GET /suggestions/seasonal/<product_id>` predicted demand and restock suggestion
-- `GET /reports/inventory/export` downloads an Excel file
+Roles: owner can use everything. staff can log in, view products, view batches (without prices), see low-stock / out-of-stock / expiring lists, and record sales.
 
-Exact request and response shapes will be added here when each route is built.
+Status of each route
+Route	Who	Status
+POST /auth/login	anyone	Ready
+GET /auth/me	logged in	Ready
+POST /auth/register	owner	Ready
+GET /products	logged in	Ready
+POST /products	owner	Ready
+POST /batches	owner	Ready
+GET /products/<id>/batches	logged in	Ready
+POST /sales	logged in	Ready
+GET /restricted-pesticides	logged in	Ready
+GET /dashboard/summary	owner	Ready
+GET /dashboard/low-stock, /out-of-stock, /expiring	logged in	Ready
+GET /reports/restricted-sales	owner	Ready (Oct 11)
+GET /forecast/history/<id>	owner	Ready (Oct 12)
+GET /forecast/<id>, GET /forecast	owner	Ready (Oct 13)
+GET /suggestions/seasonal/<id>	owner	Coming (Oct 14)
+GET /reports/inventory/export	owner	Coming (Oct 15)
+Auth
+POST /auth/login
+
+Request: { "email": "owner@inventotrack.com", "password": "Owner@123" }
+
+Response (200):
+
+json
+{
+  "token": "eyJhbGciOi...",
+  "user": { "user_id": 1, "name": "Shop Owner", "email": "owner@inventotrack.com", "role": "owner" }
+}
+
+Errors: 400 missing fields, 401 Invalid email or password.
+
+GET /auth/me
+
+Response (200): { "user_id": 1, "name": "Shop Owner", "role": "owner" }
+
+POST /auth/register (owner only)
+
+Request: { "name": "New Staff", "email": "new@shop.com", "password": "secret1", "role": "staff" } Response (201): { "message": "User created", "user_id": 3, "role": "staff" } Errors: 400 invalid input, 403 not owner, 409 email already used.
+
+Products
+GET /products
+
+total_quantity counts NON-EXPIRED stock only.
+
+json
+[
+  {
+    "product_id": 1, "name": "Chlorpyrifos 20% EC", "brand": "AgriCorp", "category": "Insecticide",
+    "season": "Kharif", "min_stock_level": 15, "is_restricted": 0,
+    "total_quantity": 66, "status": "healthy"
+  }
+]
+status	Meaning	Colour
+healthy	stock above min_stock_level	green
+low_stock	stock between 1 and min_stock_level	amber
+out_of_stock	stock is 0	red
+POST /products (owner only)
+
+Request: { "name": "Monocrotophos 36% SL", "brand": "X", "category": "Insecticide", "season": "Kharif", "min_stock_level": 10 }
+
+Response (201), restricted product:
+
+json
+{
+  "message": "Product added successfully", "product_id": 23, "is_restricted": true,
+  "restricted_match": "Monocrotophos", "restricted_reason": "Banned for use on vegetables - CIBRC",
+  "warning": "Restricted pesticide: buyer identification is required at sale."
+}
+
+For a normal product only message, product_id and is_restricted: false are returned.
+
+GET /restricted-pesticides
+
+[ { "restricted_id": 1, "pesticide_name": "Monocrotophos", "reason": "Banned ..." } ]
+
+Batches
+POST /batches (owner only)
+
+Request:
+
+json
+{ "product_id": 1, "supplier_id": 1, "batch_no": "B041", "quantity_received": 60,
+  "price_per_unit": 420, "purchase_date": "2026-09-25", "expiry_date": "2027-06-30" }
+
+Response (201): { "message": "Batch added successfully", "batch_id": 41 } Errors: 400 missing fields, 404 product not found.
+
+GET /products/<id>/batches
+
+Soonest expiry first. Staff do not receive price_per_unit.
+
+json
+{ "product_name": "Chlorpyrifos 20% EC",
+  "batches": [ { "batch_id": 41, "batch_no": "B041", "quantity_received": 60, "quantity_remaining": 45,
+                 "price_per_unit": 420.0, "purchase_date": "2026-09-25", "expiry_date": "2027-06-30", "supplier_id": 1 } ] }
+Sales
+POST /sales
+
+Stock is taken oldest-expiry-first (FIFO). Expired batches are never used. sold_by is taken from the login token.
+
+Request: { "product_id": 1, "quantity_sold": 8 }
+
+For a RESTRICTED product, buyer_id_proof is mandatory (at least 4 characters, spaces are ignored): { "product_id": 7, "quantity_sold": 2, "buyer_id_proof": "Aadhaar: XXXX-XXXX-1234" }
+
+Response (201):
+
+json
+{ "message": "Sale recorded successfully", "product_name": "Chlorpyrifos 20% EC", "total_quantity_sold": 8,
+  "batches_used": [ { "batch_id": 41, "quantity_taken": 8, "remaining_in_batch": 37 } ] }
+
+Errors (400): missing/invalid fields, Not enough stock. Only N units available (non-expired)., This product is restricted. Buyer identification is required to complete this sale., Buyer ID is too short. Enter at least 4 characters. Also 404 product not found.
+
+Dashboard
+GET /dashboard/summary (owner only)
+json
+{ "total_products": 22, "healthy_count": 20, "low_stock_count": 0, "out_of_stock_count": 2,
+  "expiring_soon_count": 17, "expired_batch_count": 2,
+  "total_inventory_value": 718402.44, "expired_stock_value": 30000.0 }
+GET /dashboard/low-stock and GET /dashboard/out-of-stock
+
+Arrays of products (same shape as GET /products). [] means none.
+
+GET /dashboard/expiring?days=30
+json
+[ { "batch_id": 27, "batch_no": "B027", "product_id": 14, "product_name": "Metribuzin 70% WP",
+    "quantity_remaining": 5, "expiry_date": "2026-10-15", "days_left": 7 } ]
+
+Error (400) if days is negative.
+
+Compliance log (Oct 11) - owner only
+GET /reports/restricted-sales
+
+Every sale of a restricted pesticide, newest first. One row per batch used, so a sale that took stock from two batches appears as two rows with the same buyer ID.
+
+Optional filters: ?from=2026-10-01&to=2026-10-31 and ?missing_only=true (only rows with NO buyer ID).
+
+Response (200):
+
+json
+{
+  "summary": { "total_records": 13, "total_units": 402, "with_buyer_id": 1, "missing_buyer_id": 12 },
+  "records": [
+    { "sale_id": 245, "sale_date": "2026-10-12", "product_id": 7, "product_name": "Paraquat 24% SL",
+      "batch_no": "B013", "quantity_sold": 2, "buyer_id_proof": "Aadhaar 1234",
+      "has_buyer_id": true, "sold_by_name": "Shop Staff" }
+  ]
+}
+
+with_buyer_id + missing_buyer_id = total_records. Show rows with has_buyer_id: false in red. Errors: 400 bad date ('from' must be a date like 2026-10-31), 403 staff.
+
+Forecast (Oct 12-13) - owner only
+GET /forecast/history/<product_id>
+
+Units sold per month. The unfinished current month is left out and empty months are filled with 0.
+
+json
+{ "product_id": 1, "product_name": "Chlorpyrifos 20% EC", "season": "Kharif",
+  "months": [ { "month": "2025-11", "quantity": 14 }, { "month": "2025-12", "quantity": 11 } ] }
+GET /forecast/<product_id>
+
+Predicts NEXT month's demand with three methods and tests each on the last 4 months.
+
+json
+{
+  "product_id": 1, "product_name": "Chlorpyrifos 20% EC", "season": "Kharif",
+  "months_available": 11, "enough_data": true, "backtest_months": 4,
+  "history": [ { "month": "2025-11", "quantity": 14 } ],
+  "methods": [
+    { "method": "season_regression", "label": "Season-aware regression", "mae": 7.22, "prediction": 12 },
+    { "method": "linear_trend", "label": "Linear trend (regression)", "mae": 13.79, "prediction": 43 },
+    { "method": "moving_average", "label": "3-month moving average", "mae": 16.33, "prediction": 38 }
+  ],
+  "lowest_error_method": "season_regression",
+  "best_method": "season_regression", "best_method_label": "Season-aware regression",
+  "forecast_month": "2026-11", "in_season_next_month": false,
+  "predicted_demand": 12,
+  "explanation": "Kharif is a seasonal product, so the season-aware model is used ..."
+}
+
+mae = average mistake in units over the test months (smaller is better). When there is not enough history (fewer than 8 complete months):
+
+json
+{ "product_id": 21, "product_name": "Neem Oil 1500 ppm", "season": "Year-round", "months_available": 0,
+  "history": [], "enough_data": false,
+  "message": "Not enough sales history yet: 0 complete month(s) found, at least 8 are needed." }
+
+Errors: 404 product not found, 403 staff.
+
+GET /forecast
+
+One short row per product: product_id, product_name, season, enough_data and, when enough_data is true, forecast_month, predicted_demand, best_method, best_method_label; otherwise message.
+
+Coming soon
+GET /suggestions/seasonal/<product_id>: restock quantity and the reason (Oct 14)
+GET /reports/inventory/export: downloads an Excel file (Oct 15)

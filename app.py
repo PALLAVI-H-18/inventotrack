@@ -11,6 +11,8 @@ from flask_jwt_extended import (
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 
+from forecast import monthly_history, forecast_product, forecast_all
+
 app = Flask(__name__)
 CORS(app)
 
@@ -19,6 +21,9 @@ app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "dev-only-change
 jwt = JWTManager(app)
 
 DB_NAME = "inventotrack.db"
+
+# A restricted-pesticide sale needs a buyer ID of at least this many characters (Oct 11)
+MIN_BUYER_ID_LENGTH = 4
 
 
 def get_db_connection():
@@ -369,7 +374,8 @@ def record_sale():
 
     product_id = data.get("product_id")
     quantity_sold = data.get("quantity_sold")
-    buyer_id_proof = data.get("buyer_id_proof")
+    # str(...).strip() so that "   " (only spaces) counts as EMPTY
+    buyer_id_proof = str(data.get("buyer_id_proof") or "").strip()
     sold_by = int(get_jwt_identity())   # always the logged-in user, never from the request body
 
     if not product_id or not quantity_sold or quantity_sold <= 0:
@@ -384,11 +390,18 @@ def record_sale():
         conn.close()
         return jsonify({"error": "Product not found"}), 404
 
-    if product["is_restricted"] and not buyer_id_proof:
-        conn.close()
-        return jsonify({
-            "error": "This product is restricted. Buyer identification is required to complete this sale."
-        }), 400
+    # Compliance rule (Oct 11): a restricted pesticide cannot be sold without a real buyer ID
+    if product["is_restricted"]:
+        if not buyer_id_proof:
+            conn.close()
+            return jsonify({
+                "error": "This product is restricted. Buyer identification is required to complete this sale."
+            }), 400
+        if len(buyer_id_proof) < MIN_BUYER_ID_LENGTH:
+            conn.close()
+            return jsonify({
+                "error": f"Buyer ID is too short. Enter at least {MIN_BUYER_ID_LENGTH} characters."
+            }), 400
 
     today = today_str()
     batches = conn.execute("""
@@ -423,7 +436,7 @@ def record_sale():
             conn.execute("""
                 INSERT INTO sales (product_id, batch_id, quantity_sold, sale_date, sold_by, buyer_id_proof)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (product_id, batch["batch_id"], take, today, sold_by, buyer_id_proof))
+            """, (product_id, batch["batch_id"], take, today, sold_by, buyer_id_proof or None))
 
             batches_used.append({
                 "batch_id": batch["batch_id"],
@@ -537,6 +550,124 @@ def dashboard_expiring():
         item["days_left"] = (expiry - today).days
         result.append(item)
     return jsonify(result)
+
+
+# =========================================================
+# COMPLIANCE LOG (Oct 11)
+# =========================================================
+def read_date_arg(name):
+    """Reads ?from=2026-10-01 style dates. Returns (value, error_message)."""
+    value = request.args.get(name)
+    if not value:
+        return None, None
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        return None, f"'{name}' must be a date like 2026-10-31"
+    return value, None
+
+
+@app.route("/reports/restricted-sales", methods=["GET"])
+@owner_required
+def restricted_sales_report():
+    """
+    The compliance log: every sale of a restricted pesticide, with the buyer ID.
+      ?from=2026-10-01&to=2026-10-31   only this date range
+      ?missing_only=true               only sales that have NO buyer ID
+    """
+    date_from, error = read_date_arg("from")
+    if error:
+        return jsonify({"error": error}), 400
+    date_to, error = read_date_arg("to")
+    if error:
+        return jsonify({"error": error}), 400
+    if date_from and date_to and date_from > date_to:
+        return jsonify({"error": "'from' date must not be after 'to' date"}), 400
+    missing_only = request.args.get("missing_only", "").lower() == "true"
+
+    query = """
+        SELECT s.sale_id, s.sale_date, s.quantity_sold, s.buyer_id_proof,
+               p.product_id, p.name AS product_name, b.batch_no,
+               u.name AS sold_by_name
+        FROM sales s
+        JOIN products p ON s.product_id = p.product_id
+        JOIN batches b ON s.batch_id = b.batch_id
+        LEFT JOIN users u ON s.sold_by = u.user_id
+        WHERE p.is_restricted = 1
+    """
+    params = []
+    if date_from:
+        query += " AND s.sale_date >= ?"
+        params.append(date_from)
+    if date_to:
+        query += " AND s.sale_date <= ?"
+        params.append(date_to)
+    if missing_only:
+        query += " AND (s.buyer_id_proof IS NULL OR TRIM(s.buyer_id_proof) = '')"
+    query += " ORDER BY s.sale_date DESC, s.sale_id DESC"
+
+    conn = get_db_connection()
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    records = []
+    for row in rows:
+        item = dict(row)
+        item["has_buyer_id"] = bool(item["buyer_id_proof"] and item["buyer_id_proof"].strip())
+        records.append(item)
+
+    with_id = sum(1 for r in records if r["has_buyer_id"])
+    return jsonify({
+        "summary": {
+            "total_records": len(records),
+            "total_units": sum(r["quantity_sold"] for r in records),
+            "with_buyer_id": with_id,
+            "missing_buyer_id": len(records) - with_id,
+        },
+        "records": records,
+    })
+
+
+# =========================================================
+# FORECAST (Oct 12 + Oct 13) - owner only
+# =========================================================
+@app.route("/forecast/history/<int:product_id>", methods=["GET"])
+@owner_required
+def forecast_history(product_id):
+    """Oct 12: units sold per month (the clean table the model learns from)."""
+    conn = get_db_connection()
+    product = conn.execute(
+        "SELECT name, season FROM products WHERE product_id = ?", (product_id,)
+    ).fetchone()
+    conn.close()
+    if product is None:
+        return jsonify({"error": "Product not found"}), 404
+
+    series = monthly_history(DB_NAME, product_id)
+    return jsonify({
+        "product_id": product_id,
+        "product_name": product["name"],
+        "season": product["season"],
+        "months": [{"month": str(m), "quantity": int(q)} for m, q in series.items()],
+    })
+
+
+@app.route("/forecast/<int:product_id>", methods=["GET"])
+@owner_required
+def forecast_one(product_id):
+    """Oct 13: next month's demand for one product, with all three methods compared."""
+    result = forecast_product(DB_NAME, product_id)
+    if result is None:
+        return jsonify({"error": "Product not found"}), 404
+    return jsonify(result)
+
+
+@app.route("/forecast", methods=["GET"])
+@owner_required
+def forecast_every_product():
+    """Oct 13: one prediction per product."""
+    return jsonify(forecast_all(DB_NAME))
+
 
 
 if __name__ == "__main__":
