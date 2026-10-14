@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS products (
     category TEXT,
     season TEXT,                        -- Kharif / Rabi / Monsoon / Year-round
     min_stock_level INTEGER DEFAULT 10,
-    is_restricted INTEGER DEFAULT 0,    -- 0 = no, 1 = yes (auto-set later)
+    is_restricted INTEGER DEFAULT 0,    -- 0 = no, 1 = yes (set automatically)
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -62,3 +62,8 @@ CREATE TABLE IF NOT EXISTS restricted_pesticides (
     pesticide_name TEXT NOT NULL,
     reason TEXT
 );
+
+-- INDEXES: make the common look-ups fast (safe to run again and again)
+CREATE INDEX IF NOT EXISTS idx_batches_product ON batches (product_id, expiry_date);
+CREATE INDEX IF NOT EXISTS idx_sales_product_date ON sales (product_id, sale_date);
+CREATE INDEX IF NOT EXISTS idx_sales_date ON sales (sale_date);

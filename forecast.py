@@ -24,12 +24,11 @@ HOW WE CHOOSE
     seasons can look good in the test and still be badly wrong when a season starts or ends.
   * Year-round product: the method with the smallest MAE.
 """
-import sqlite3
-from datetime import date
-
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+
+import stock
 
 # Which calendar months (1 = Jan ... 12 = Dec) belong to each crop season.
 # Same table as seed_data.py, so the demo data and the model agree.
@@ -54,7 +53,7 @@ METHOD_LABELS = {
 # ------------------------------------------------------------------
 # STEP 1 (Oct 12): aggregate sales into a clean monthly table
 # ------------------------------------------------------------------
-def monthly_history(db_name, product_id, today=None):
+def monthly_history(db, product_id, today=None):
     """
     Returns a pandas Series: index = month (2026-03), value = units sold that month.
 
@@ -63,17 +62,15 @@ def monthly_history(db_name, product_id, today=None):
       * months with no sales are filled with 0 (no gaps)
       * the table runs from the first sale up to LAST month
     """
-    today = today or date.today()
+    today = today or stock.today()
 
-    conn = sqlite3.connect(db_name)
-    try:
-        sales = pd.read_sql_query(
-            "SELECT sale_date, quantity_sold FROM sales WHERE product_id = ?",
-            conn,
-            params=(product_id,),
-        )
-    finally:
-        conn.close()
+    rows = db.execute(
+        "SELECT sale_date, quantity_sold FROM sales WHERE product_id = ?", (product_id,)
+    ).fetchall()
+    sales = pd.DataFrame(
+        [(r["sale_date"], int(r["quantity_sold"])) for r in rows],
+        columns=["sale_date", "quantity_sold"],
+    )
 
     if sales.empty:
         return pd.Series(dtype=int)
@@ -150,22 +147,16 @@ def _backtest_mae(method, values, month_numbers, season):
 # ------------------------------------------------------------------
 # STEP 3 (Oct 13): forecast one product / all products
 # ------------------------------------------------------------------
-def forecast_product(db_name, product_id, today=None):
+def forecast_product(db, product_id, today=None):
     """Returns a dict (ready for jsonify), or None if the product does not exist."""
-    today = today or date.today()
+    today = today or stock.today()
 
-    conn = sqlite3.connect(db_name)
-    try:
-        row = conn.execute(
-            "SELECT name, season FROM products WHERE product_id = ?", (product_id,)
-        ).fetchone()
-    finally:
-        conn.close()
+    row = db.execute("SELECT name, season FROM products WHERE product_id = ?", (product_id,)).fetchone()
     if row is None:
         return None
-    name, season = row
+    name, season = row["name"], row["season"]
 
-    history = monthly_history(db_name, product_id, today)
+    history = monthly_history(db, product_id, today)
     result = {
         "product_id": product_id,
         "product_name": name,
@@ -242,16 +233,12 @@ def forecast_product(db_name, product_id, today=None):
     return result
 
 
-def forecast_all(db_name, today=None):
-    conn = sqlite3.connect(db_name)
-    try:
-        ids = [r[0] for r in conn.execute("SELECT product_id FROM products ORDER BY product_id")]
-    finally:
-        conn.close()
+def forecast_all(db, today=None):
+    ids = [r["product_id"] for r in db.execute("SELECT product_id FROM products ORDER BY product_id").fetchall()]
 
     summary = []
     for pid in ids:
-        f = forecast_product(db_name, pid, today)
+        f = forecast_product(db, pid, today)
         item = {
             "product_id": f["product_id"],
             "product_name": f["product_name"],
