@@ -1,0 +1,12 @@
+$kind: http-request
+url: "{{base_url}}/suggestions"
+method: GET
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Status is 401', function () { pm.response.to.have.status(401); });
+      pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });
+    language: text/javascript
+order: 6000

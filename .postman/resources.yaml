@@ -6,8 +6,8 @@ workspace:
 
 cloudResources:
   collections:
-    ../postman/collections/InventoTrack: 218b19aa-3a1d-4822-8b37-4c1a18f07fc5
     ../postman/collections/InventoTrack - new routes (Oct 14-16): a1058b42-8bb4-4b4b-a992-5ad1e6917ca7
+    ../postman/collections/InventoTrack: b5911f1d-43eb-41dc-a368-6e17fb6c9970
 
 # All resources in the `postman/` folder are automatically registered in Local View.
 # Point to additional files outside the `postman/` folder to register them individually. Example:

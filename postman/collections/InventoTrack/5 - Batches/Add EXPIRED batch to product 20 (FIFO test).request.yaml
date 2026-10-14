@@ -9,7 +9,7 @@ body:
     {
       "product_id": 20,
       "supplier_id": 1,
-      "batch_no": "EXPIRED-TEST",
+      "batch_no": "EXPIRED-TEST-{{$timestamp}}",
       "quantity_received": 50,
       "price_per_unit": 300,
       "purchase_date": "2025-01-01",

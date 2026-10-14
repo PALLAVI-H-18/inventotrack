@@ -8,7 +8,7 @@ body:
   type: json
   content: |-
     {
-      "name": "Neem Oil 1500 ppm",
+      "name": "Neem Oil 1500 ppm {{$timestamp}}",
       "brand": "AgriCorp",
       "category": "Bio-pesticide",
       "season": "Year-round",

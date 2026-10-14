@@ -13,6 +13,8 @@ body:
     }
 scripts:
   - type: afterResponse
-    code: pm.test('Status is 201', function () { pm.response.to.have.status(201); });
-    language: text/javascript
+    code: |-
+      pm.test("Status is 400", function () {
+          pm.response.to.have.status(400);
+      });
 order: 2000

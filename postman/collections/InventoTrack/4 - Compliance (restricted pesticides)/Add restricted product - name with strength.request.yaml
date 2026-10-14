@@ -8,7 +8,7 @@ body:
   type: json
   content: |-
     {
-      "name": "Monocrotophos 36% SL",
+      "name": "Monocrotophos 36% SL {{$timestamp}}",
       "brand": "Test",
       "category": "Insecticide",
       "season": "Kharif",

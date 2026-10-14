@@ -9,7 +9,7 @@ body:
     {
       "product_id": 1,
       "supplier_id": 1,
-      "batch_no": "B041",
+      "batch_no": "B041-{{$timestamp}}",
       "quantity_received": 60,
       "price_per_unit": 420,
       "purchase_date": "2026-09-25",

@@ -1,11 +1,11 @@
 $kind: collection
-description: InventoTrack API tests with login. Run folder 0 first.
+description: InventoTrack API tests with login. Run folder 0 first. Change the base_url variable to test local (http://127.0.0.1:5000) or live (https://invento-track.onrender.com).
 variables:
   base_url: http://127.0.0.1:5000
   token: ""
   staff_token: ""
 auth:
-  - id: 21e9d0f4-7348-43bb-9e2a-0d307ae92db3
+  - id: 13be1167-f82d-43eb-b20f-bd70a4dcdd68
     type: bearer
     name: bearer auth
     credentials:

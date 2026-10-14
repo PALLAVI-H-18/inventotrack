@@ -8,7 +8,7 @@ body:
   type: json
   content: |-
     {
-      "name": "monocrotophos",
+      "name": "monocrotophos {{$timestamp}}",
       "brand": "Test",
       "category": "Insecticide",
       "season": "Kharif",

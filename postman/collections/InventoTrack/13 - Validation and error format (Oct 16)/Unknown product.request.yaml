@@ -1,0 +1,23 @@
+$kind: http-request
+url: "{{base_url}}/batches"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "product_id": 999999,
+      "batch_no": "V4",
+      "quantity_received": 10,
+      "price_per_unit": 50,
+      "purchase_date": "2026-10-01",
+      "expiry_date": "2027-10-01"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Status is 404', function () { pm.response.to.have.status(404); });
+      pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });
+    language: text/javascript
+order: 5000
