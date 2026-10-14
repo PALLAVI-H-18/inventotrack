@@ -1,0 +1,19 @@
+$kind: collection
+description: Only folders 11-13. Uses base_url, token, staff_token. Log in with your existing collection first, or set the variables by hand.
+variables:
+  - key: base_url
+    value: http://127.0.0.1:5000
+    disabled: false
+  - key: token
+    value: ""
+    disabled: false
+  - key: staff_token
+    value: ""
+    disabled: false
+  - key: json_web_token_142w
+    secret: true
+    disabled: false
+auth:
+  type: bearer
+  credentials:
+    token: "{{json_web_token_142w}}"

@@ -1,0 +1,11 @@
+$kind: http-request
+description: Use Send and Download to save the file, then open it in Excel.
+url: "{{base_url}}/reports/inventory/export"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Status is 200', function () { pm.response.to.have.status(200); });
+      pm.test('Is an .xlsx file', function () { pm.expect(pm.response.headers.get('Content-Type')).to.include('spreadsheetml'); pm.expect(pm.response.headers.get('Content-Disposition')).to.include('.xlsx'); });
+    language: text/javascript
+order: 1000

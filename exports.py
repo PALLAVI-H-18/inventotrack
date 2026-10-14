@@ -5,6 +5,7 @@ Each function returns a BytesIO that Flask can send as a download.
 Text cells are "neutralised" so a product name like  =HYPERLINK(...)  cannot run as a formula
 when the owner opens the file (this is called formula injection).
 """
+import re
 from datetime import datetime, timedelta
 from io import BytesIO
 
@@ -24,10 +25,15 @@ AMBER_FILL = PatternFill("solid", fgColor="FFE699")
 RUPEE = '"₹"#,##0.00'
 
 
+ILLEGAL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")   # Excel files cannot contain these
+
+
 def safe(value):
-    """Stop text that starts with = + - @ from being treated as an Excel formula."""
-    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
-        return "'" + value
+    """Remove characters Excel cannot store, and stop text starting with = + - @ from becoming a formula."""
+    if isinstance(value, str):
+        value = ILLEGAL_CHARS.sub("", value)
+        if value[:1] in ("=", "+", "-", "@", "\t", "\r"):
+            return "'" + value
     return value
 
 

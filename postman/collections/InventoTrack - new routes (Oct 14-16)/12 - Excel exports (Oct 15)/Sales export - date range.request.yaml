@@ -1,0 +1,13 @@
+$kind: http-request
+url: "{{base_url}}/reports/sales/export?from=2026-01-01&to=2026-12-31"
+method: GET
+queryParams:
+  from: 2026-01-01
+  to: 2026-12-31
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Status is 200', function () { pm.response.to.have.status(200); });
+      pm.test('Is an .xlsx file', function () { pm.expect(pm.response.headers.get('Content-Type')).to.include('spreadsheetml'); pm.expect(pm.response.headers.get('Content-Disposition')).to.include('.xlsx'); });
+    language: text/javascript
+order: 3000

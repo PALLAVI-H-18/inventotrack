@@ -1,0 +1,12 @@
+$kind: http-request
+url: "{{base_url}}/health"
+method: GET
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Status is 200', function () { pm.response.to.have.status(200); });
+      pm.test('DB ok', function () { pm.expect(pm.response.json().status).to.eql('ok'); });
+    language: text/javascript
+order: 12000

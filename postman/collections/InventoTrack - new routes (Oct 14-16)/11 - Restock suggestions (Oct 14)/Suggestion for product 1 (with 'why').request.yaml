@@ -1,0 +1,11 @@
+$kind: http-request
+description: "Owner only. Read the 'why' field: it explains basis, season and current stock."
+url: "{{base_url}}/suggestions/seasonal/1"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Status is 200', function () { pm.response.to.have.status(200); });
+      pm.test('Has reasoning', function () { const j = pm.response.json(); pm.expect(j.why).to.be.a('string'); pm.expect(j.recommended_order).to.be.at.least(0); pm.expect(['forecast','minimum_stock_rule']).to.include(j.basis); });
+    language: text/javascript
+order: 1000
