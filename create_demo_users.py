@@ -5,6 +5,7 @@ Safe to run again: existing users are skipped.
 These are DEMO passwords only. Change them for any real use.
 """
 import sqlite3
+from database import DB_NAME
 from werkzeug.security import generate_password_hash
 
 DEMO_USERS = [
@@ -12,7 +13,7 @@ DEMO_USERS = [
     ("Shop Staff", "staff@inventotrack.com", "Staff@123", "staff"),
 ]
 
-conn = sqlite3.connect("inventotrack.db")
+conn = sqlite3.connect(DB_NAME)
 for name, email, password, role in DEMO_USERS:
     exists = conn.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone()
     if exists:

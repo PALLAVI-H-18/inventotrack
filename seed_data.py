@@ -1,8 +1,9 @@
 import sqlite3
 import random
 from datetime import datetime, timedelta
+from database import DB_NAME
 
-conn = sqlite3.connect("inventotrack.db")
+conn = sqlite3.connect(DB_NAME)
 cur = conn.cursor()
 
 # ---------------------------------------------------------

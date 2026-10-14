@@ -1,8 +1,9 @@
 InventoTrack API Contract
 
-Base URL (local): http://127.0.0.1:5000 Live URL: https://invento-track.onrender.com (database not set up yet, use local for now)
+Base URL (local): http://127.0.0.1:5000
+Render URL (configured in the Render dashboard): https://invento-track.onrender.com
 
-All requests and responses use JSON. Errors always look like:
+API errors use one JSON shape (including framework 404/405 responses):
 
 json
 { "error": "message to show the user" }
@@ -33,8 +34,10 @@ GET /dashboard/low-stock, /out-of-stock, /expiring	logged in	Ready
 GET /reports/restricted-sales	owner	Ready (Oct 11)
 GET /forecast/history/<id>	owner	Ready (Oct 12)
 GET /forecast/<id>, GET /forecast	owner	Ready (Oct 13)
-GET /suggestions/seasonal/<id>	owner	Coming (Oct 14)
-GET /reports/inventory/export	owner	Coming (Oct 15)
+GET /suggestions/seasonal, GET /suggestions/seasonal/<id>	owner	Ready (Oct 14)
+GET /reports/inventory/export	owner	Ready (Oct 15)
+GET /reports/sales/export	owner	Ready (Oct 15)
+GET /reports/compliance/export	owner	Ready (Oct 15)
 Auth
 POST /auth/login
 
@@ -210,6 +213,23 @@ GET /forecast
 
 One short row per product: product_id, product_name, season, enough_data and, when enough_data is true, forecast_month, predicted_demand, best_method, best_method_label; otherwise message.
 
-Coming soon
-GET /suggestions/seasonal/<product_id>: restock quantity and the reason (Oct 14)
-GET /reports/inventory/export: downloads an Excel file (Oct 15)
+Restock suggestions (Oct 14) - owner only
+
+GET /suggestions/seasonal/<product_id> returns an explainable restock recommendation.
+GET /suggestions/seasonal returns one recommendation per product.
+
+The `why` field identifies the forecast basis (or minimum-stock fallback), product
+season, forecast month, current non-expired stock, target stock, and recommended
+quantity. `recommended_restock_quantity` is never negative. If there is not enough
+complete monthly sales history, the recommendation uses `min_stock_level`.
+
+Excel exports (Oct 15) - owner only
+
+GET /reports/inventory/export downloads `inventory.xlsx`.
+GET /reports/sales/export downloads `sales.xlsx`.
+GET /reports/compliance/export downloads `compliance-log.xlsx`; it accepts the same
+`from`, `to`, and `missing_only` filters as `/reports/restricted-sales`.
+
+All three downloads are Open XML `.xlsx` workbooks with a header row, including when
+there are no records. Send the normal bearer token; the response is a file rather
+than a JSON document.

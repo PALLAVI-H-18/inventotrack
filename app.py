@@ -1,26 +1,34 @@
 import os
 import sqlite3
+import math
+from io import BytesIO
 from datetime import datetime, timedelta
 from functools import wraps
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
 from flask_jwt_extended import (
     JWTManager, create_access_token, jwt_required,
     get_jwt, get_jwt_identity, verify_jwt_in_request,
 )
 from werkzeug.security import generate_password_hash, check_password_hash
+from openpyxl import Workbook
 
-from forecast import monthly_history, forecast_product, forecast_all
+from database import DB_NAME
+from forecast import SEASON_MONTHS, monthly_history, forecast_product, forecast_all
 
 app = Flask(__name__)
 CORS(app)
 
-# Secret used to sign login tokens. On Render this comes from an environment variable.
-app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "dev-only-change-me-in-production")
+app.config["JWT_SECRET_KEY"] = os.environ.get(
+    "JWT_SECRET_KEY", "dev-only-change-me-in-production"
+)
+if (
+    os.environ.get("FLASK_ENV") == "production" or os.environ.get("RENDER") == "true"
+) and app.config["JWT_SECRET_KEY"] == "dev-only-change-me-in-production":
+    raise RuntimeError("JWT_SECRET_KEY must be set to a secure value in production")
 jwt = JWTManager(app)
-
-DB_NAME = "inventotrack.db"
 
 # A restricted-pesticide sale needs a buyer ID of at least this many characters (Oct 11)
 MIN_BUYER_ID_LENGTH = 4
@@ -29,7 +37,71 @@ MIN_BUYER_ID_LENGTH = 4
 def get_db_connection():
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+@app.errorhandler(HTTPException)
+def http_error(error):
+    return jsonify({"error": error.description}), error.code
+
+
+@app.errorhandler(Exception)
+def unexpected_error(error):
+    app.logger.exception("Unhandled API error: %s", error)
+    return jsonify({"error": "An unexpected server error occurred"}), 500
+
+
+def read_json_object():
+    """Return a JSON object or a consistent validation response."""
+    if not request.is_json:
+        return None, (jsonify({"error": "Content-Type must be application/json"}), 400)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return None, (jsonify({"error": "Request body must be a JSON object"}), 400)
+    return data, None
+
+
+def is_integer(value, minimum=None):
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and (minimum is None or value >= minimum)
+    )
+
+
+def is_iso_date(value):
+    if not isinstance(value, str):
+        return False
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").strftime("%Y-%m-%d") == value
+    except ValueError:
+        return False
+
+
+def excel_response(filename, sheet_name, headers, rows):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = sheet_name
+    sheet.append(headers)
+    for row in rows:
+        values = []
+        for header in headers:
+            value = row.get(header)
+            if isinstance(value, str) and value.startswith(("=", "+", "-", "@")):
+                value = "'" + value
+            values.append(value)
+        sheet.append(values)
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename,
+    )
 
 
 # =========================================================
@@ -141,12 +213,17 @@ def home():
 # =========================================================
 @app.route("/auth/login", methods=["POST"])
 def login():
-    data = request.get_json(silent=True) or {}
-    email = (data.get("email") or "").strip().lower()
-    password = data.get("password") or ""
+    data, error = read_json_object()
+    if error:
+        return error
+    email = data.get("email")
+    password = data.get("password")
 
-    if not email or not password:
+    if not isinstance(email, str) or not isinstance(password, str) or not email.strip() or not password:
         return jsonify({"error": "Email and password are required"}), 400
+    email = email.strip().lower()
+    if "@" not in email:
+        return jsonify({"error": "Enter a valid email address"}), 400
 
     conn = get_db_connection()
     user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
@@ -186,14 +263,20 @@ def me():
 @app.route("/auth/register", methods=["POST"])
 @owner_required
 def register():
-    data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip()
-    email = (data.get("email") or "").strip().lower()
-    password = data.get("password") or ""
+    data, error = read_json_object()
+    if error:
+        return error
+    name = data.get("name")
+    email = data.get("email")
+    password = data.get("password")
     role = data.get("role", "staff")
 
-    if not name or not email or not password:
+    if not isinstance(name, str) or not name.strip():
+        return jsonify({"error": "name is required"}), 400
+    if not isinstance(email, str) or not isinstance(password, str) or not password:
         return jsonify({"error": "name, email and password are required"}), 400
+    name = name.strip()
+    email = email.strip().lower()
     if "@" not in email:
         return jsonify({"error": "Enter a valid email address"}), 400
     if len(password) < 6:
@@ -233,25 +316,34 @@ def get_products():
 @app.route("/products", methods=["POST"])
 @owner_required
 def add_product():
-    data = request.get_json(silent=True) or {}
+    data, error = read_json_object()
+    if error:
+        return error
 
-    if not data.get("name"):
+    name = data.get("name")
+    if not isinstance(name, str) or not name.strip():
         return jsonify({"error": "Product name is required"}), 400
+    min_stock_level = data.get("min_stock_level", 10)
+    if not is_integer(min_stock_level, 0):
+        return jsonify({"error": "min_stock_level must be a non-negative integer"}), 400
+    for field in ("brand", "category", "season"):
+        if data.get(field) is not None and not isinstance(data[field], str):
+            return jsonify({"error": f"{field} must be a string"}), 400
 
     conn = get_db_connection()
 
-    match = find_restricted_match(conn, data.get("name"))
+    match = find_restricted_match(conn, name.strip())
     is_restricted = 1 if match else 0
 
     cur = conn.execute("""
         INSERT INTO products (name, brand, category, season, min_stock_level, is_restricted)
         VALUES (?, ?, ?, ?, ?, ?)
     """, (
-        data.get("name"),
+        name.strip(),
         data.get("brand"),
         data.get("category"),
         data.get("season"),
-        data.get("min_stock_level", 10),
+        min_stock_level,
         is_restricted
     ))
     conn.commit()
@@ -281,19 +373,51 @@ def list_restricted():
     return jsonify([dict(r) for r in rows])
 
 
+@app.route("/reports/inventory/export", methods=["GET"])
+@owner_required
+def export_inventory():
+    conn = get_db_connection()
+    products = get_products_with_stock(conn)
+    conn.close()
+    headers = [
+        "product_id", "name", "brand", "category", "season",
+        "min_stock_level", "is_restricted", "total_quantity", "status",
+    ]
+    return excel_response(
+        "inventory.xlsx", "Inventory", headers, products
+    )
+
+
 # =========================================================
 # BATCHES
 # =========================================================
 @app.route("/batches", methods=["POST"])
 @owner_required
 def add_batch():
-    data = request.get_json(silent=True) or {}
+    data, error = read_json_object()
+    if error:
+        return error
 
     required_fields = ["product_id", "batch_no", "quantity_received",
                        "price_per_unit", "purchase_date", "expiry_date"]
-    missing = [f for f in required_fields if not data.get(f)]
+    missing = [f for f in required_fields if f not in data or data[f] is None or data[f] == ""]
     if missing:
         return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
+    if not is_integer(data["product_id"], 1):
+        return jsonify({"error": "product_id must be a positive integer"}), 400
+    if not isinstance(data["batch_no"], str) or not data["batch_no"].strip():
+        return jsonify({"error": "batch_no must be a non-empty string"}), 400
+    if not is_integer(data["quantity_received"], 1):
+        return jsonify({"error": "quantity_received must be a positive integer"}), 400
+    price = data["price_per_unit"]
+    if isinstance(price, bool) or not isinstance(price, (int, float)) or not math.isfinite(price) or price < 0:
+        return jsonify({"error": "price_per_unit must be a non-negative number"}), 400
+    if not is_iso_date(data["purchase_date"]) or not is_iso_date(data["expiry_date"]):
+        return jsonify({"error": "purchase_date and expiry_date must use YYYY-MM-DD"}), 400
+    if data["expiry_date"] < data["purchase_date"]:
+        return jsonify({"error": "expiry_date must not be before purchase_date"}), 400
+    if data.get("supplier_id") is not None and not is_integer(data["supplier_id"], 1):
+        return jsonify({"error": "supplier_id must be a positive integer"}), 400
 
     conn = get_db_connection()
 
@@ -305,9 +429,6 @@ def add_batch():
         return jsonify({"error": "Product not found"}), 404
 
     quantity_received = data["quantity_received"]
-    if quantity_received <= 0:
-        conn.close()
-        return jsonify({"error": "quantity_received must be positive"}), 400
 
     cur = conn.execute("""
         INSERT INTO batches (product_id, supplier_id, batch_no, quantity_received,
@@ -316,10 +437,10 @@ def add_batch():
     """, (
         data["product_id"],
         data.get("supplier_id"),
-        data["batch_no"],
+        data["batch_no"].strip(),
         quantity_received,
         quantity_received,
-        data["price_per_unit"],
+        price,
         data["purchase_date"],
         data["expiry_date"]
     ))
@@ -370,16 +491,19 @@ def get_batches_for_product(product_id):
 @app.route("/sales", methods=["POST"])
 @jwt_required()
 def record_sale():
-    data = request.get_json(silent=True) or {}
+    data, error = read_json_object()
+    if error:
+        return error
 
     product_id = data.get("product_id")
     quantity_sold = data.get("quantity_sold")
-    # str(...).strip() so that "   " (only spaces) counts as EMPTY
-    buyer_id_proof = str(data.get("buyer_id_proof") or "").strip()
+    buyer_id_proof = data.get("buyer_id_proof", "")
+    if not is_integer(product_id, 1) or not is_integer(quantity_sold, 1):
+        return jsonify({"error": "product_id and a positive integer quantity_sold are required"}), 400
+    if not isinstance(buyer_id_proof, str):
+        return jsonify({"error": "buyer_id_proof must be a string"}), 400
+    buyer_id_proof = buyer_id_proof.strip()
     sold_by = int(get_jwt_identity())   # always the logged-in user, never from the request body
-
-    if not product_id or not quantity_sold or quantity_sold <= 0:
-        return jsonify({"error": "product_id and a positive quantity_sold are required"}), 400
 
     conn = get_db_connection()
 
@@ -524,9 +648,13 @@ def dashboard_out_of_stock():
 @app.route("/dashboard/expiring", methods=["GET"])
 @jwt_required()
 def dashboard_expiring():
-    days = request.args.get("days", 30, type=int)
-    if days < 0:
-        return jsonify({"error": "days must be zero or more"}), 400
+    days_arg = request.args.get("days", "30")
+    try:
+        days = int(days_arg)
+    except ValueError:
+        return jsonify({"error": "days must be a non-negative integer"}), 400
+    if days < 0 or str(days) != days_arg.strip():
+        return jsonify({"error": "days must be a non-negative integer"}), 400
 
     today = datetime.today().date()
     limit = today + timedelta(days=days)
@@ -560,31 +688,12 @@ def read_date_arg(name):
     value = request.args.get(name)
     if not value:
         return None, None
-    try:
-        datetime.strptime(value, "%Y-%m-%d")
-    except ValueError:
+    if not is_iso_date(value):
         return None, f"'{name}' must be a date like 2026-10-31"
     return value, None
 
 
-@app.route("/reports/restricted-sales", methods=["GET"])
-@owner_required
-def restricted_sales_report():
-    """
-    The compliance log: every sale of a restricted pesticide, with the buyer ID.
-      ?from=2026-10-01&to=2026-10-31   only this date range
-      ?missing_only=true               only sales that have NO buyer ID
-    """
-    date_from, error = read_date_arg("from")
-    if error:
-        return jsonify({"error": error}), 400
-    date_to, error = read_date_arg("to")
-    if error:
-        return jsonify({"error": error}), 400
-    if date_from and date_to and date_from > date_to:
-        return jsonify({"error": "'from' date must not be after 'to' date"}), 400
-    missing_only = request.args.get("missing_only", "").lower() == "true"
-
+def get_restricted_sales_records(conn, date_from=None, date_to=None, missing_only=False):
     query = """
         SELECT s.sale_id, s.sale_date, s.quantity_sold, s.buyer_id_proof,
                p.product_id, p.name AS product_name, b.batch_no,
@@ -605,27 +714,97 @@ def restricted_sales_report():
     if missing_only:
         query += " AND (s.buyer_id_proof IS NULL OR TRIM(s.buyer_id_proof) = '')"
     query += " ORDER BY s.sale_date DESC, s.sale_id DESC"
-
-    conn = get_db_connection()
     rows = conn.execute(query, params).fetchall()
-    conn.close()
-
     records = []
     for row in rows:
         item = dict(row)
         item["has_buyer_id"] = bool(item["buyer_id_proof"] and item["buyer_id_proof"].strip())
         records.append(item)
-
-    with_id = sum(1 for r in records if r["has_buyer_id"])
-    return jsonify({
+    with_id = sum(1 for record in records if record["has_buyer_id"])
+    return {
         "summary": {
             "total_records": len(records),
-            "total_units": sum(r["quantity_sold"] for r in records),
+            "total_units": sum(record["quantity_sold"] for record in records),
             "with_buyer_id": with_id,
             "missing_buyer_id": len(records) - with_id,
         },
         "records": records,
-    })
+    }
+
+
+def read_compliance_filters():
+    date_from, error = read_date_arg("from")
+    if error:
+        return None, error
+    date_to, error = read_date_arg("to")
+    if error:
+        return None, error
+    if date_from and date_to and date_from > date_to:
+        return None, "'from' date must not be after 'to' date"
+    missing_arg = request.args.get("missing_only", "").lower()
+    if missing_arg not in ("", "true", "false"):
+        return None, "missing_only must be true or false"
+    return (date_from, date_to, missing_arg == "true"), None
+
+
+@app.route("/reports/restricted-sales", methods=["GET"])
+@owner_required
+def restricted_sales_report():
+    """
+    The compliance log: every sale of a restricted pesticide, with the buyer ID.
+      ?from=2026-10-01&to=2026-10-31   only this date range
+      ?missing_only=true               only sales that have NO buyer ID
+    """
+    filters, error = read_compliance_filters()
+    if error:
+        return jsonify({"error": error}), 400
+    date_from, date_to, missing_only = filters
+
+    conn = get_db_connection()
+    result = get_restricted_sales_records(conn, date_from, date_to, missing_only)
+    conn.close()
+    return jsonify(result)
+
+
+@app.route("/reports/sales/export", methods=["GET"])
+@owner_required
+def export_sales():
+    conn = get_db_connection()
+    rows = conn.execute("""
+        SELECT s.sale_id, s.sale_date, p.product_id, p.name AS product_name,
+               b.batch_no, s.quantity_sold, s.buyer_id_proof,
+               u.name AS sold_by_name
+        FROM sales s
+        JOIN products p ON s.product_id = p.product_id
+        JOIN batches b ON s.batch_id = b.batch_id
+        LEFT JOIN users u ON s.sold_by = u.user_id
+        ORDER BY s.sale_date DESC, s.sale_id DESC
+    """).fetchall()
+    conn.close()
+    headers = [
+        "sale_id", "sale_date", "product_id", "product_name", "batch_no",
+        "quantity_sold", "buyer_id_proof", "sold_by_name",
+    ]
+    return excel_response("sales.xlsx", "Sales", headers, [dict(row) for row in rows])
+
+
+@app.route("/reports/compliance/export", methods=["GET"])
+@owner_required
+def export_compliance():
+    filters, error = read_compliance_filters()
+    if error:
+        return jsonify({"error": error}), 400
+    date_from, date_to, missing_only = filters
+    conn = get_db_connection()
+    result = get_restricted_sales_records(conn, date_from, date_to, missing_only)
+    conn.close()
+    headers = [
+        "sale_id", "sale_date", "product_id", "product_name", "batch_no",
+        "quantity_sold", "buyer_id_proof", "has_buyer_id", "sold_by_name",
+    ]
+    return excel_response(
+        "compliance-log.xlsx", "Compliance Log", headers, result["records"]
+    )
 
 
 # =========================================================
@@ -669,7 +848,85 @@ def forecast_every_product():
     return jsonify(forecast_all(DB_NAME))
 
 
+def make_restock_suggestion(product, forecast):
+    target_date = datetime.today().date().replace(day=28) + timedelta(days=4)
+    target_date = target_date.replace(day=1)
+    season = product["season"] or "Unspecified"
+    in_season = target_date.month in SEASON_MONTHS.get(season, range(1, 13))
+    current_stock = product["total_quantity"]
+    minimum_stock = product["min_stock_level"]
+
+    if forecast["enough_data"]:
+        demand = forecast["predicted_demand"]
+        target_stock = max(minimum_stock, demand)
+        basis = (
+            f"{forecast['best_method_label']} predicts {demand} units for "
+            f"{forecast['forecast_month']} (backtest MAE "
+            f"{next(method['mae'] for method in forecast['methods'] if method['method'] == forecast['best_method'])} "
+            f"units)."
+        )
+        forecast_month = forecast["forecast_month"]
+    else:
+        demand = None
+        target_stock = minimum_stock
+        forecast_month = None
+        basis = (
+            f"Sales history is not yet long enough for a reliable forecast; "
+            f"the minimum stock level of {minimum_stock} units is used."
+        )
+
+    recommended_quantity = max(0, target_stock - current_stock)
+    season_description = "in season" if in_season else "out of season"
+    why = (
+        f"Basis: {basis} Season: {season} is {season_description} for the forecast month. "
+        f"Current usable stock is {current_stock} units; target stock is {target_stock} "
+        f"units. Restock {recommended_quantity} units."
+    )
+    return {
+        "product_id": product["product_id"],
+        "product_name": product["name"],
+        "season": season,
+        "forecast_month": forecast_month,
+        "in_season": in_season,
+        "enough_data": forecast["enough_data"],
+        "best_method": forecast.get("best_method"),
+        "predicted_demand": demand,
+        "current_stock": current_stock,
+        "minimum_stock": minimum_stock,
+        "target_stock": target_stock,
+        "recommended_restock_quantity": recommended_quantity,
+        "why": why,
+    }
+
+
+@app.route("/suggestions/seasonal/<int:product_id>", methods=["GET"])
+@owner_required
+def seasonal_suggestion(product_id):
+    conn = get_db_connection()
+    product = next(
+        (item for item in get_products_with_stock(conn) if item["product_id"] == product_id),
+        None,
+    )
+    conn.close()
+    if product is None:
+        return jsonify({"error": "Product not found"}), 404
+    forecast = forecast_product(DB_NAME, product_id)
+    return jsonify(make_restock_suggestion(product, forecast))
+
+
+@app.route("/suggestions/seasonal", methods=["GET"])
+@owner_required
+def all_seasonal_suggestions():
+    conn = get_db_connection()
+    products = get_products_with_stock(conn)
+    conn.close()
+    return jsonify([
+        make_restock_suggestion(product, forecast_product(DB_NAME, product["product_id"]))
+        for product in products
+    ])
+
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=os.environ.get("FLASK_DEBUG") == "1")
