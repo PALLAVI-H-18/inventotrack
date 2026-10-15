@@ -13,7 +13,7 @@ function when(text) {
   return text ? text.slice(0, 16).replace('T', ' ') : ''
 }
 
-function AlertCard({ n, canFinish, onFinish, busy }) {
+function AlertCard({ n, canFinish, onFinish, onRemove, busy }) {
   const done = n.status === 'done'
   return (
     <div className={`rounded-xl border p-4 ${done ? 'border-slate-200 bg-slate-50' : 'border-amber-300 bg-amber-50'}`}>
@@ -28,6 +28,13 @@ function AlertCard({ n, canFinish, onFinish, busy }) {
         In stock now: <strong>{n.current_stock}</strong> · Sent by {n.created_by_name || 'owner'} on {when(n.created_at)}
         {done && ` · Done by ${n.done_by_name || 'staff'} on ${when(n.done_at)}`}
       </p>
+      {done && onRemove && (
+        <div className="mt-3">
+          <Button variant="secondary" onClick={() => onRemove(n.notification_id)} disabled={busy}>
+            🗑️ Remove
+          </Button>
+        </div>
+      )}
       {canFinish && !done && (
         <div className="mt-3">
           <Button onClick={() => onFinish(n.notification_id)} disabled={busy}>
@@ -88,6 +95,35 @@ export default function Alerts() {
     try {
       await api(`/notifications/${id}/done`, { method: 'POST' })
       setInfo('Marked as done. The owner can now see it.')
+      await load()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove(id) {
+    setError('')
+    setInfo('')
+    setBusy(true)
+    try {
+      await api(`/notifications/${id}`, { method: 'DELETE' })
+      await load()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function clearDone() {
+    setError('')
+    setInfo('')
+    setBusy(true)
+    try {
+      const data = await api('/notifications/done', { method: 'DELETE' })
+      setInfo(`Removed ${data.removed} finished alert(s).`)
       await load()
     } catch (err) {
       setError(err.message)
@@ -173,10 +209,15 @@ export default function Alerts() {
 
       {done.length > 0 && (
         <div>
-          <h2 className="mb-3 text-lg font-semibold text-slate-800">Done ({done.length})</h2>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-slate-800">Done ({done.length})</h2>
+            <Button variant="secondary" onClick={clearDone} disabled={busy}>
+              🗑️ Clear all done
+            </Button>
+          </div>
           <div className="space-y-3">
             {done.slice(0, 10).map((n) => (
-              <AlertCard key={n.notification_id} n={n} />
+              <AlertCard key={n.notification_id} n={n} onRemove={remove} busy={busy} />
             ))}
           </div>
         </div>
