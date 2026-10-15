@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* ---------- Colour theme and font (Sep 29) ---------- */
+/* Anything defined in @theme becomes a Tailwind class, e.g. bg-brand-600, text-brand-800 */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand-50: #f0fdf4;
+  --color-brand-100: #dcfce7;
+  --color-brand-200: #bbf7d0;
+  --color-brand-500: #22c55e;
+  --color-brand-600: #16a34a;
+  --color-brand-700: #15803d;
+  --color-brand-800: #166534;
+  --color-brand-900: #14532d;
+}
+
+body {
+  margin: 0;
+  background-color: #f8fafc;
+  color: #1e293b;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+}

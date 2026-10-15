@@ -3,7 +3,11 @@
 // Each batch has its own expiry date - that is what makes FIFO selling possible.
 // ------------------------------------------------------------------
 import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { api } from '../api.js'
+import { parseQr } from '../qr.js'
+import QrScanner from '../components/QrScanner.jsx'
+import StockPanel from '../components/StockPanel.jsx'
 import { Alert, Button, Card, Field, PageHeader, Spinner, inputClass, todayStr } from '../components/ui.jsx'
 
 // These match the 3 suppliers created by seed_data.py (there is no suppliers API yet).
@@ -25,23 +29,40 @@ const emptyForm = () => ({
 
 export default function AddStock() {
   const [products, setProducts] = useState(null)
-  const [form, setForm] = useState(emptyForm())
+  const location = useLocation()
+  const [form, setForm] = useState({ ...emptyForm(), product_id: location.state?.productId ? String(location.state.productId) : '' })
   const [errors, setErrors] = useState({})
   const [apiError, setApiError] = useState('')
   const [success, setSuccess] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [scanning, setScanning] = useState(false)
+
+  const reloadProducts = () =>
+    api('/products')
+      .then(setProducts)
+      .catch((err) => setApiError(err.message))
 
   useEffect(() => {
-    let cancelled = false
-    api('/products')
-      .then((data) => !cancelled && setProducts(data))
-      .catch((err) => !cancelled && setApiError(err.message))
-    return () => {
-      cancelled = true
-    }
+    reloadProducts()
   }, [])
 
+  const chosen = (products || []).find((p) => String(p.product_id) === form.product_id)
+
   const set = (field) => (event) => setForm({ ...form, [field]: event.target.value })
+
+  function handleScan(text) {
+    setScanning(false)
+    setSuccess(null)
+    const id = parseQr(text)
+    const found = id && (products || []).find((p) => p.product_id === id)
+    if (!found) {
+      setApiError('This QR code does not match any product in the shop.')
+      return
+    }
+    setApiError('')
+    setForm((f) => ({ ...f, product_id: String(found.product_id) }))
+    setSuccess(`Scanned: ${found.name}. Now fill in the batch details.`)
+  }
 
   function validate() {
     const found = {}
@@ -92,7 +113,8 @@ export default function AddStock() {
 
       const data = await api('/batches', { method: 'POST', body })
       const product = products.find((p) => String(p.product_id) === form.product_id)
-      setSuccess(`Batch ${body.batch_no} added to ${product ? product.name : 'product'} (batch id ${data.batch_id}).`)
+      setSuccess(`Batch ${body.batch_no} added to ${product ? product.name : 'product'} (batch id ${data.batch_id}). Stock is now ${data.total_stock}.`)
+      reloadProducts() // refresh the numbers in the stock panel
       setForm({ ...emptyForm(), product_id: form.product_id }) // keep the product selected for the next batch
     } catch (err) {
       setApiError(err.message)
@@ -112,8 +134,17 @@ export default function AddStock() {
         {success && <Alert type="success">{success}</Alert>}
       </div>
 
+      {scanning && (
+        <div className="mb-4">
+          <QrScanner onScan={handleScan} onClose={() => setScanning(false)} />
+        </div>
+      )}
+
       <Card>
         <form onSubmit={handleSubmit} noValidate className="space-y-4">
+          <Button type="button" variant="secondary" onClick={() => setScanning(true)}>
+            📷 Scan product QR
+          </Button>
           <Field label="Product *" htmlFor="product_id" error={errors.product_id}>
             <select id="product_id" className={inputClass} value={form.product_id} onChange={set('product_id')}>
               <option value="">Select a product...</option>
@@ -125,6 +156,8 @@ export default function AddStock() {
               ))}
             </select>
           </Field>
+
+          <StockPanel product={chosen} />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Batch number *" htmlFor="batch_no" error={errors.batch_no}>

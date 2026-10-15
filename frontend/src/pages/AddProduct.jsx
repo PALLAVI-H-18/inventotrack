@@ -5,6 +5,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api.js'
+import { parseNewProductQr, parseQr } from '../qr.js'
+import QrScanner from '../components/QrScanner.jsx'
 import { Alert, Button, Card, Field, PageHeader, inputClass } from '../components/ui.jsx'
 
 const CATEGORIES = ['Insecticide', 'Fungicide', 'Herbicide', 'Bio-pesticide', 'Other']
@@ -17,9 +19,34 @@ export default function AddProduct() {
   const [apiError, setApiError] = useState('')
   const [result, setResult] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [scanMsg, setScanMsg] = useState(null)
 
   // one small helper updates any field:  onChange={set('brand')}
   const set = (field) => (event) => setForm({ ...form, [field]: event.target.value })
+
+  // Scanning a "new product" QR fills the form; the owner checks it and presses Add product.
+  function handleScan(text) {
+    setScanning(false)
+    setResult(null)
+    setApiError('')
+    const info = parseNewProductQr(text)
+    if (info) {
+      setForm({
+        name: info.name,
+        brand: info.brand,
+        category: CATEGORIES.includes(info.category) ? info.category : EMPTY.category,
+        season: SEASONS.includes(info.season) ? info.season : EMPTY.season,
+        min_stock_level: /^\d+$/.test(info.min_stock_level) ? info.min_stock_level : EMPTY.min_stock_level,
+      })
+      setErrors({})
+      setScanMsg({ type: 'success', text: `Scanned "${info.name}". Check the details below, then press Add product.` })
+    } else if (/^INVENTO:/i.test(String(text).trim()) && parseQr(text)) {
+      setScanMsg({ type: 'warning', text: 'This is the QR of a product already in the shop. Use Add Stock to add a batch for it.' })
+    } else {
+      setScanMsg({ type: 'error', text: 'This is not an InventoTrack new-product QR. Create one on the QR Labels page.' })
+    }
+  }
 
   function validate() {
     const found = {}
@@ -53,6 +80,7 @@ export default function AddProduct() {
       })
       setResult({ ...data, name: form.name.trim() })
       setForm(EMPTY)
+      setScanMsg(null)
     } catch (err) {
       setApiError(err.message)
     } finally {
@@ -69,6 +97,7 @@ export default function AddProduct() {
 
       <div className="mb-4 space-y-3">
         {apiError && <Alert type="error">{apiError}</Alert>}
+        {scanMsg && <Alert type={scanMsg.type}>{scanMsg.text}</Alert>}
 
         {result && result.is_restricted && (
           <Alert type="warning" title={`Restricted pesticide detected: ${result.name}`}>
@@ -90,8 +119,17 @@ export default function AddProduct() {
         )}
       </div>
 
+      {scanning && (
+        <div className="mb-4">
+          <QrScanner onScan={handleScan} onClose={() => setScanning(false)} />
+        </div>
+      )}
+
       <Card>
         <form onSubmit={handleSubmit} noValidate className="space-y-4">
+          <Button type="button" variant="secondary" onClick={() => { setScanMsg(null); setScanning(true) }}>
+            📷 Scan new-product QR
+          </Button>
           <Field label="Product name *" htmlFor="name" error={errors.name} hint="Example: Chlorpyrifos 20% EC">
             <input id="name" className={inputClass} value={form.name} onChange={set('name')} />
           </Field>

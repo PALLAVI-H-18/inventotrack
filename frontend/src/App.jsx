@@ -14,6 +14,9 @@ import Suggestions from './pages/Suggestions.jsx'
 import Forecast from './pages/Forecast.jsx'
 import Compliance from './pages/Compliance.jsx'
 import Reports from './pages/Reports.jsx'
+import Scan from './pages/Scan.jsx'
+import Alerts from './pages/Alerts.jsx'
+import QrLabels from './pages/QrLabels.jsx'
 import Users from './pages/Users.jsx'
 
 export default function App() {
@@ -28,11 +31,14 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="products" element={<Products />} />
           <Route path="sale" element={<RecordSale />} />
+          <Route path="scan" element={<Scan />} />
+          <Route path="alerts" element={<Alerts />} />
 
           {/* owner-only pages */}
           <Route element={<RequireOwner />}>
             <Route path="add-product" element={<AddProduct />} />
             <Route path="add-stock" element={<AddStock />} />
+            <Route path="qr-labels" element={<QrLabels />} />
             <Route path="suggestions" element={<Suggestions />} />
             <Route path="forecast" element={<Forecast />} />
             <Route path="compliance" element={<Compliance />} />

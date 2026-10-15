@@ -30,10 +30,10 @@ export default function Dashboard() {
     let cancelled = false
     async function load() {
       try {
-        const calls = [api('/products'), api('/dashboard/expiring')]
+        const calls = [api('/products'), api('/dashboard/expiring'), api('/notifications?status=open')]
         if (isOwner) calls.push(api('/dashboard/summary'), api('/suggestions'))
-        const [products, expiring, summary, restock] = await Promise.all(calls)
-        if (!cancelled) setData({ products, expiring, summary: summary || null, restock: restock?.summary || null })
+        const [products, expiring, openAlerts, summary, restock] = await Promise.all(calls)
+        if (!cancelled) setData({ products, expiring, openAlerts, summary: summary || null, restock: restock?.summary || null })
       } catch (err) {
         if (!cancelled) setError(err.message)
       }
@@ -47,13 +47,31 @@ export default function Dashboard() {
   if (error) return <Alert type="error">{error}</Alert>
   if (!data) return <Spinner label="Loading dashboard..." />
 
-  const { products, expiring, summary, restock } = data
+  const { products, expiring, openAlerts, summary, restock } = data
   const count = (status) => products.filter((p) => p.status === status).length
   const needAttention = products.filter((p) => p.status !== 'healthy')
 
   return (
     <div className="space-y-6">
       <PageHeader title="Dashboard" subtitle={`Welcome back, ${user.name}. Here is your shop today.`} />
+
+      {!isOwner && openAlerts.length > 0 && (
+        <Alert type="warning" title={`${openAlerts.length} product(s) the owner wants you to bring to the shop`}>
+          {openAlerts.slice(0, 3).map((n) => n.product_name).join(', ')}
+          {openAlerts.length > 3 ? '...' : ''}{' '}
+          <Link to="/alerts" className="font-semibold underline">
+            Open alerts
+          </Link>
+        </Alert>
+      )}
+
+      {isOwner && needAttention.length > 0 && (
+        <Alert type="error" title={`${count('out_of_stock')} out of stock, ${count('low_stock')} low stock`}>
+          <Link to="/alerts" className="font-semibold underline">
+            Send an alert to staff so they bring these to the shop
+          </Link>
+        </Alert>
+      )}
 
       {isOwner && restock && restock.order_now + restock.order_soon > 0 && (
         <Alert type="warning" title={`${restock.order_now + restock.order_soon} product(s) need restocking`}>

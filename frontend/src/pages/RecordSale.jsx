@@ -4,9 +4,12 @@
 //  * restricted products show a warning and make "Buyer ID" mandatory
 //  * after the sale it shows WHICH batches the stock came from (FIFO)
 // ------------------------------------------------------------------
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { api } from '../api.js'
+import { parseQr } from '../qr.js'
+import QrScanner from '../components/QrScanner.jsx'
+import StockPanel from '../components/StockPanel.jsx'
 import { Alert, Button, Card, Field, PageHeader, Spinner, inputClass } from '../components/ui.jsx'
 
 export default function RecordSale() {
@@ -22,6 +25,9 @@ export default function RecordSale() {
   const [apiError, setApiError] = useState('')
   const [result, setResult] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [scanMsg, setScanMsg] = useState(null)
+  const quantityRef = useRef(null)
 
   async function loadProducts() {
     try {
@@ -36,6 +42,25 @@ export default function RecordSale() {
   }, [])
 
   const product = (products || []).find((p) => String(p.product_id) === productId)
+
+  function handleScan(text) {
+    setScanning(false)
+    setResult(null)
+    setErrors({})
+    const id = parseQr(text)
+    const found = id && (products || []).find((p) => p.product_id === id)
+    if (!found) {
+      setScanMsg({ type: 'error', text: 'This QR code does not match any product in the shop.' })
+      return
+    }
+    if (found.status === 'out_of_stock' || found.total_quantity <= 0) {
+      setScanMsg({ type: 'error', text: `${found.name} is out of stock.` })
+      return
+    }
+    setProductId(String(found.product_id))
+    setScanMsg({ type: 'success', text: `Scanned: ${found.name}` })
+    setTimeout(() => quantityRef.current?.focus(), 50)
+  }
 
   function validate() {
     const found = {}
@@ -84,8 +109,14 @@ export default function RecordSale() {
 
       <div className="mb-4 space-y-3">
         {apiError && <Alert type="error">{apiError}</Alert>}
+        {scanMsg && <Alert type={scanMsg.type}>{scanMsg.text}</Alert>}
         {result && (
           <Alert type="success" title={`Sold ${result.total_quantity_sold} x ${result.product_name}`}>
+            <p className="mb-2">
+              <strong>{result.remaining_stock} left in stock</strong>
+              {result.stock_status === 'low_stock' && ' - LOW STOCK, tell the owner.'}
+              {result.stock_status === 'out_of_stock' && ' - OUT OF STOCK, tell the owner.'}
+            </p>
             <p className="mb-2">Stock was taken from these batches:</p>
             <ul className="list-disc pl-5">
               {result.batches_used.map((b) => (
@@ -98,8 +129,17 @@ export default function RecordSale() {
         )}
       </div>
 
+      {scanning && (
+        <div className="mb-4">
+          <QrScanner onScan={handleScan} onClose={() => setScanning(false)} />
+        </div>
+      )}
+
       <Card>
         <form onSubmit={handleSubmit} noValidate className="space-y-4">
+          <Button type="button" variant="secondary" onClick={() => { setScanMsg(null); setScanning(true) }}>
+            📷 Scan QR code
+          </Button>
           <Field label="Product *" htmlFor="product" error={errors.product}>
             <select
               id="product"
@@ -107,6 +147,7 @@ export default function RecordSale() {
               value={productId}
               onChange={(e) => {
                 setProductId(e.target.value)
+                setScanMsg(null)
                 setErrors({})
               }}
             >
@@ -119,11 +160,7 @@ export default function RecordSale() {
             </select>
           </Field>
 
-          {product && (
-            <p className="text-sm text-slate-600">
-              Available to sell: <strong>{product.total_quantity}</strong> units (expired batches are not counted)
-            </p>
-          )}
+          <StockPanel product={product} />
 
           {product?.is_restricted ? (
             <Alert type="warning" title="Restricted pesticide">
@@ -134,6 +171,7 @@ export default function RecordSale() {
           <Field label="Quantity *" htmlFor="quantity" error={errors.quantity}>
             <input
               id="quantity"
+              ref={quantityRef}
               type="number"
               min="1"
               className={inputClass}
