@@ -56,3 +56,10 @@ def test_exports_are_owner_only(client, staff):
 def test_export_with_bad_date_is_a_json_error(client, owner):
     response = client.get("/reports/sales/export?from=31-12-2026", headers=owner)
     assert response.status_code == 400 and "error" in response.get_json()
+
+
+def test_control_characters_in_data_do_not_break_the_export(client, owner, staff, world):
+    # a buyer ID pasted from a scanner can contain invisible control characters
+    client.post("/sales", json={"product_id": world.mono, "quantity_sold": 1, "buyer_id_proof": "AADHAAR-12\x0734"}, headers=staff)
+    wb = open_xlsx(client.get("/reports/compliance/export", headers=owner))
+    assert wb["Restricted sales"].max_row == 2

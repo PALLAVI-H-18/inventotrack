@@ -21,8 +21,9 @@ RESTRICTED = [
     ("Aluminium Phosphide", "Fumigant, highly toxic"), ("Quinalphos", "Restricted use"),
     ("Cypermethrin 25% EC", "Restricted use"),
 ]
-SUPPLIERS = [("Kisan Agro Traders", "9880011111", "Chikkaballapur"), ("Green Fields Distributors", "9880022222", "Bangalore"),
-             ("Bharat Crop Care", "9880033333", "Kolar")]
+# The frontend's "Add stock" form lists these three names for supplier ids 1, 2 and 3.
+SUPPLIERS = [("AgroDistributors Pvt Ltd", "9880011111", "Chikkaballapur"), ("Krishi Suppliers", "9880022222", "Bangalore"),
+             ("Farm Input Traders", "9880033333", "Kolar")]
 # name, brand, category, season, min_stock, monthly base demand
 PRODUCTS = [
     ("Neem Oil 1500 PPM", "AgriNeem", "Bio-pesticide", "Year-round", 15, 20),
@@ -91,7 +92,56 @@ def seed(db):
                 day = m + timedelta(days=rng.randint(0, 26))
                 db.execute("INSERT INTO sales (product_id, batch_id, quantity_sold, sale_date, sold_by, buyer_id_proof) VALUES (?, ?, ?, ?, ?, ?)",
                            (pid, batch_ids[0], take, day.strftime("%Y-%m-%d"), rng.choice(sellers) if sellers else None,
-                            f"AADHAAR-{rng.randint(1000, 9999)}" if restricted and rng.random() > 0.15 else None))
+                            f"AADHAAR-{rng.randint(1000, 9999)}" if restricted else None))
                 qty -= take
+    add_demo_scenarios(db, today, sellers)
     db.commit()
     print(f"Demo data added: {len(PRODUCTS)} products, {len(RESTRICTED)} restricted names, {len(SUPPLIERS)} suppliers.")
+
+
+def _product_id(db, name):
+    return db.execute("SELECT product_id FROM products WHERE name = ?", (name,)).fetchone()["product_id"]
+
+
+def _day(today, offset):
+    return (today + timedelta(days=offset)).strftime("%Y-%m-%d")
+
+
+def add_demo_scenarios(db, today, sellers):
+    """Plant one example of every situation, so a demo can show each screen with real content."""
+    # 1. OUT OF STOCK
+    db.execute("UPDATE batches SET quantity_remaining = 0 WHERE product_id = ?", (_product_id(db, "2,4-D Sodium Salt"),))
+
+    # 2. LOW STOCK: total usable stock below the minimum
+    pid = _product_id(db, "Mancozeb 75% WP")
+    db.execute("UPDATE batches SET quantity_remaining = 0 WHERE product_id = ? AND batch_no LIKE ?", (pid, "%-2"))
+    db.execute("UPDATE batches SET quantity_remaining = 6 WHERE product_id = ? AND batch_no LIKE ?", (pid, "%-1"))
+
+    # 3. EXPIRING SOON (red and amber alerts)
+    db.execute("UPDATE batches SET expiry_date = ?, quantity_remaining = 5 WHERE product_id = ? AND batch_no LIKE ?",
+               (_day(today, 6), _product_id(db, "Hexaconazole 5% EC"), "%-1"))
+    db.execute("UPDATE batches SET expiry_date = ?, quantity_remaining = 9 WHERE product_id = ? AND batch_no LIKE ?",
+               (_day(today, 20), _product_id(db, "Atrazine 50% WP"), "%-1"))
+
+    # 4. EXPIRED STOCK still on the shelf (never sold, counted as lost value)
+    pid = _product_id(db, "Sulphur 80% WDG")
+    supplier = db.execute("SELECT supplier_id FROM suppliers ORDER BY supplier_id LIMIT 1").fetchone()["supplier_id"]
+    db.execute("""INSERT INTO batches (product_id, supplier_id, batch_no, quantity_received, quantity_remaining,
+                                       price_per_unit, purchase_date, expiry_date)
+                  VALUES (?, ?, 'OLD-EXPIRED', 20, 8, 320, ?, ?)""", (pid, supplier, _day(today, -400), _day(today, -10)))
+
+    # 5. A BRAND-NEW PRODUCT with no sales (restock advice falls back to the simple rule)
+    new_id = db.insert(
+        "INSERT INTO products (name, brand, category, season, min_stock_level, is_restricted) VALUES (?, ?, ?, ?, ?, 0)",
+        ("Bio Booster (new)", "GreenGrow", "Fertilizer", "Year-round", 10), "product_id") if False else db.insert(
+        "INSERT INTO products (name, brand, category, season, min_stock_level, is_restricted) VALUES (?, ?, ?, ?, ?, ?)",
+        ("Bio Booster (new)", "GreenGrow", "Fertilizer", "Year-round", 10, 0), "product_id")
+    db.execute("""INSERT INTO batches (product_id, supplier_id, batch_no, quantity_received, quantity_remaining,
+                                       price_per_unit, purchase_date, expiry_date)
+                  VALUES (?, ?, 'NEW-1', 40, 40, 275, ?, ?)""", (new_id, supplier, _day(today, -3), _day(today, 365)))
+
+    # 6. Two OLD restricted sales that have no buyer ID (records made before the rule existed)
+    rows = db.execute("""SELECT s.sale_id FROM sales s JOIN products p ON p.product_id = s.product_id
+                         WHERE p.is_restricted = 1 ORDER BY s.sale_id LIMIT 2""").fetchall()
+    for r in rows:
+        db.execute("UPDATE sales SET buyer_id_proof = NULL WHERE sale_id = ?", (r["sale_id"],))

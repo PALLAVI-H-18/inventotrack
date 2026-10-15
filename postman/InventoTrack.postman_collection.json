@@ -851,7 +851,7 @@
             "description": "Expect is_restricted false. Running again creates a duplicate row.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Neem Oil 1500 ppm\",\n  \"brand\": \"AgriCorp\",\n  \"category\": \"Bio-pesticide\",\n  \"season\": \"Year-round\",\n  \"min_stock_level\": 10\n}",
+              "raw": "{\n  \"name\": \"Neem Oil 1500 ppm {{$timestamp}}\",\n  \"brand\": \"AgriCorp\",\n  \"category\": \"Bio-pesticide\",\n  \"season\": \"Year-round\",\n  \"min_stock_level\": 10\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -941,7 +941,7 @@
             "description": "Expect is_restricted true, plus restricted_match, restricted_reason and warning.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Monocrotophos\",\n  \"brand\": \"Test\",\n  \"category\": \"Insecticide\",\n  \"season\": \"Kharif\",\n  \"min_stock_level\": 10\n}",
+              "raw": "{\n  \"name\": \"Monocrotophos {{$timestamp}}\",\n  \"brand\": \"Test\",\n  \"category\": \"Insecticide\",\n  \"season\": \"Kharif\",\n  \"min_stock_level\": 10\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -983,7 +983,7 @@
             "description": "Partial name match: still flagged.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Monocrotophos 36% SL\",\n  \"brand\": \"Test\",\n  \"category\": \"Insecticide\",\n  \"season\": \"Kharif\",\n  \"min_stock_level\": 10\n}",
+              "raw": "{\n  \"name\": \"Monocrotophos 36% SL {{$timestamp}}\",\n  \"brand\": \"Test\",\n  \"category\": \"Insecticide\",\n  \"season\": \"Kharif\",\n  \"min_stock_level\": 10\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1025,7 +1025,7 @@
             "description": "Case is ignored: still flagged.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"monocrotophos\",\n  \"brand\": \"Test\",\n  \"category\": \"Insecticide\",\n  \"season\": \"Kharif\",\n  \"min_stock_level\": 10\n}",
+              "raw": "{\n  \"name\": \"monocrotophos {{$timestamp}}\",\n  \"brand\": \"Test\",\n  \"category\": \"Insecticide\",\n  \"season\": \"Kharif\",\n  \"min_stock_level\": 10\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1101,7 +1101,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"product_id\": 1,\n  \"supplier_id\": 1,\n  \"batch_no\": \"B041\",\n  \"quantity_received\": 60,\n  \"price_per_unit\": 420,\n  \"purchase_date\": \"2026-09-25\",\n  \"expiry_date\": \"2027-06-30\"\n}",
+              "raw": "{\n  \"product_id\": 1,\n  \"supplier_id\": 1,\n  \"batch_no\": \"B041-{{$timestamp}}\",\n  \"quantity_received\": 60,\n  \"price_per_unit\": 420,\n  \"purchase_date\": \"2026-09-25\",\n  \"expiry_date\": \"2027-06-30\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1257,7 +1257,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"product_id\": 20,\n  \"supplier_id\": 1,\n  \"batch_no\": \"EXPIRED-TEST\",\n  \"quantity_received\": 50,\n  \"price_per_unit\": 300,\n  \"purchase_date\": \"2025-01-01\",\n  \"expiry_date\": \"2025-06-01\"\n}",
+              "raw": "{\n  \"product_id\": 20,\n  \"supplier_id\": 1,\n  \"batch_no\": \"EXPIRED-TEST-{{$timestamp}}\",\n  \"quantity_received\": 50,\n  \"price_per_unit\": 300,\n  \"purchase_date\": \"2025-01-01\",\n  \"expiry_date\": \"2025-06-01\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1299,7 +1299,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"product_id\": 22,\n  \"supplier_id\": 1,\n  \"batch_no\": \"B999\",\n  \"quantity_received\": 20,\n  \"price_per_unit\": 500,\n  \"purchase_date\": \"2026-09-01\",\n  \"expiry_date\": \"2027-12-31\"\n}",
+              "raw": "{\n  \"product_id\": 22,\n  \"supplier_id\": 1,\n  \"batch_no\": \"B999-{{$timestamp}}\",\n  \"quantity_received\": 20,\n  \"price_per_unit\": 500,\n  \"purchase_date\": \"2026-09-01\",\n  \"expiry_date\": \"2027-12-31\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1314,6 +1314,59 @@
     {
       "name": "6 - Sales and FIFO",
       "item": [
+        {
+          "name": "Setup - restock product 20 (so this folder can be re-run)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('stamp', Date.now());",
+                  "pm.variables.set('buy_date', moment().subtract(1,'days').format('YYYY-MM-DD'));",
+                  "pm.variables.set('exp_date', moment().add(90,'days').format('YYYY-MM-DD'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/batches",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "batches"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"product_id\": 20,\n  \"supplier_id\": 1,\n  \"batch_no\": \"RESTOCK-{{stamp}}\",\n  \"quantity_received\": 12,\n  \"price_per_unit\": 300,\n  \"purchase_date\": \"{{buy_date}}\",\n  \"expiry_date\": \"{{exp_date}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Adds 12 fresh units to product 20 so the FIFO sales below always have stock."
+          }
+        },
         {
           "name": "Sale - normal, one batch",
           "event": [
@@ -1473,7 +1526,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"product_id\": 20,\n  \"quantity_sold\": 40\n}",
+              "raw": "{\n  \"product_id\": 20,\n  \"quantity_sold\": 5000\n}",
               "options": {
                 "raw": {
                   "language": "json"

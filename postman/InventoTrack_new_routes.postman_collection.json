@@ -1,0 +1,963 @@
+{
+ "info": {
+  "name": "InventoTrack - new routes (Oct 14-16)",
+  "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+  "description": "Only folders 11-13. Uses base_url, token, staff_token. Log in with your existing collection first, or set the variables by hand."
+ },
+ "item": [
+  {
+   "name": "11 - Restock suggestions (Oct 14)",
+   "item": [
+    {
+     "name": "Suggestion for product 1 (with 'why')",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+         "pm.test('Has reasoning', function () { const j = pm.response.json(); pm.expect(j.why).to.be.a('string'); pm.expect(j.recommended_order).to.be.at.least(0); pm.expect(['forecast','minimum_stock_rule']).to.include(j.basis); });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/suggestions/seasonal/1",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "suggestions",
+        "seasonal",
+        "1"
+       ]
+      },
+      "description": "Owner only. Read the 'why' field: it explains basis, season and current stock."
+     }
+    },
+    {
+     "name": "Suggestion for product that does not exist",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 404', function () { pm.response.to.have.status(404); });",
+         "pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/suggestions/seasonal/999999",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "suggestions",
+        "seasonal",
+        "999999"
+       ]
+      },
+      "description": ""
+     }
+    },
+    {
+     "name": "All suggestions (most urgent first)",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+         "pm.test('Has summary', function () { pm.expect(pm.response.json().summary.total_products).to.be.above(0); });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/suggestions",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "suggestions"
+       ]
+      },
+      "description": ""
+     }
+    },
+    {
+     "name": "Only products that need ordering",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/suggestions?only_needed=true",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "suggestions"
+       ],
+       "query": [
+        {
+         "key": "only_needed",
+         "value": "true"
+        }
+       ]
+      },
+      "description": ""
+     }
+    },
+    {
+     "name": "Staff blocked (403)",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 403', function () { pm.response.to.have.status(403); });",
+         "pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/suggestions",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "suggestions"
+       ]
+      },
+      "description": "",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{staff_token}}",
+         "type": "string"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "name": "No token (401)",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 401', function () { pm.response.to.have.status(401); });",
+         "pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/suggestions",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "suggestions"
+       ]
+      },
+      "description": "",
+      "auth": {
+       "type": "noauth"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "12 - Excel exports (Oct 15)",
+   "item": [
+    {
+     "name": "Inventory export",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+         "pm.test('Is an .xlsx file', function () { pm.expect(pm.response.headers.get('Content-Type')).to.include('spreadsheetml'); pm.expect(pm.response.headers.get('Content-Disposition')).to.include('.xlsx'); });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/reports/inventory/export",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "reports",
+        "inventory",
+        "export"
+       ]
+      },
+      "description": "Use Send and Download to save the file, then open it in Excel."
+     }
+    },
+    {
+     "name": "Sales export",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+         "pm.test('Is an .xlsx file', function () { pm.expect(pm.response.headers.get('Content-Type')).to.include('spreadsheetml'); pm.expect(pm.response.headers.get('Content-Disposition')).to.include('.xlsx'); });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/reports/sales/export",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "reports",
+        "sales",
+        "export"
+       ]
+      },
+      "description": ""
+     }
+    },
+    {
+     "name": "Sales export - date range",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+         "pm.test('Is an .xlsx file', function () { pm.expect(pm.response.headers.get('Content-Type')).to.include('spreadsheetml'); pm.expect(pm.response.headers.get('Content-Disposition')).to.include('.xlsx'); });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/reports/sales/export?from=2026-01-01&to=2026-12-31",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "reports",
+        "sales",
+        "export"
+       ],
+       "query": [
+        {
+         "key": "from",
+         "value": "2026-01-01"
+        },
+        {
+         "key": "to",
+         "value": "2026-12-31"
+        }
+       ]
+      },
+      "description": ""
+     }
+    },
+    {
+     "name": "Compliance export",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+         "pm.test('Is an .xlsx file', function () { pm.expect(pm.response.headers.get('Content-Type')).to.include('spreadsheetml'); pm.expect(pm.response.headers.get('Content-Disposition')).to.include('.xlsx'); });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/reports/compliance/export",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "reports",
+        "compliance",
+        "export"
+       ]
+      },
+      "description": ""
+     }
+    },
+    {
+     "name": "Compliance export - missing buyer ID only",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+         "pm.test('Is an .xlsx file', function () { pm.expect(pm.response.headers.get('Content-Type')).to.include('spreadsheetml'); pm.expect(pm.response.headers.get('Content-Disposition')).to.include('.xlsx'); });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/reports/compliance/export?missing_only=true",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "reports",
+        "compliance",
+        "export"
+       ],
+       "query": [
+        {
+         "key": "missing_only",
+         "value": "true"
+        }
+       ]
+      },
+      "description": ""
+     }
+    },
+    {
+     "name": "Export with a bad date (400 JSON error)",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 400', function () { pm.response.to.have.status(400); });",
+         "pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/reports/sales/export?from=31-12-2026",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "reports",
+        "sales",
+        "export"
+       ],
+       "query": [
+        {
+         "key": "from",
+         "value": "31-12-2026"
+        }
+       ]
+      },
+      "description": ""
+     }
+    },
+    {
+     "name": "Staff blocked (403)",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 403', function () { pm.response.to.have.status(403); });",
+         "pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/reports/inventory/export",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "reports",
+        "inventory",
+        "export"
+       ]
+      },
+      "description": "",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{staff_token}}",
+         "type": "string"
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "13 - Validation and error format (Oct 16)",
+   "item": [
+    {
+     "name": "Empty batch body - every missing field listed",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 400', function () { pm.response.to.have.status(400); });",
+         "pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/batches",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "batches"
+       ]
+      },
+      "description": "",
+      "body": {
+       "mode": "raw",
+       "raw": "{}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     }
+    },
+    {
+     "name": "Quantity is text",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 400', function () { pm.response.to.have.status(400); });",
+         "pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/batches",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "batches"
+       ]
+      },
+      "description": "",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"product_id\": 1,\n  \"batch_no\": \"V1\",\n  \"quantity_received\": \"ten\",\n  \"price_per_unit\": 50,\n  \"purchase_date\": \"2026-10-01\",\n  \"expiry_date\": \"2027-10-01\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     }
+    },
+    {
+     "name": "Expiry before purchase",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 400', function () { pm.response.to.have.status(400); });",
+         "pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/batches",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "batches"
+       ]
+      },
+      "description": "",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"product_id\": 1,\n  \"batch_no\": \"V2\",\n  \"quantity_received\": 10,\n  \"price_per_unit\": 50,\n  \"purchase_date\": \"2026-10-01\",\n  \"expiry_date\": \"2026-01-01\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     }
+    },
+    {
+     "name": "Impossible date (30 Feb)",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 400', function () { pm.response.to.have.status(400); });",
+         "pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/batches",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "batches"
+       ]
+      },
+      "description": "",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"product_id\": 1,\n  \"batch_no\": \"V3\",\n  \"quantity_received\": 10,\n  \"price_per_unit\": 50,\n  \"purchase_date\": \"2026-10-01\",\n  \"expiry_date\": \"2027-02-30\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     }
+    },
+    {
+     "name": "Unknown product",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 404', function () { pm.response.to.have.status(404); });",
+         "pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/batches",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "batches"
+       ]
+      },
+      "description": "",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"product_id\": 999999,\n  \"batch_no\": \"V4\",\n  \"quantity_received\": 10,\n  \"price_per_unit\": 50,\n  \"purchase_date\": \"2026-10-01\",\n  \"expiry_date\": \"2027-10-01\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     }
+    },
+    {
+     "name": "Sale with negative quantity",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 400', function () { pm.response.to.have.status(400); });",
+         "pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/sales",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "sales"
+       ]
+      },
+      "description": "",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"product_id\": 1,\n  \"quantity_sold\": -2\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     }
+    },
+    {
+     "name": "Sale body is not JSON",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 400', function () { pm.response.to.have.status(400); });",
+         "pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/sales",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "sales"
+       ]
+      },
+      "description": "",
+      "body": {
+       "mode": "raw",
+       "raw": "hello",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     }
+    },
+    {
+     "name": "Bad season",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 400', function () { pm.response.to.have.status(400); });",
+         "pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/products",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "products"
+       ]
+      },
+      "description": "",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"name\": \"Season Test\",\n  \"season\": \"Winter\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     }
+    },
+    {
+     "name": "Query parameter not a number",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 400', function () { pm.response.to.have.status(400); });",
+         "pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/dashboard/expiring?days=abc",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "dashboard",
+        "expiring"
+       ],
+       "query": [
+        {
+         "key": "days",
+         "value": "abc"
+        }
+       ]
+      },
+      "description": ""
+     }
+    },
+    {
+     "name": "Unknown route (404 JSON)",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 404', function () { pm.response.to.have.status(404); });",
+         "pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/no-such-route",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "no-such-route"
+       ]
+      },
+      "description": ""
+     }
+    },
+    {
+     "name": "Wrong method (405 JSON)",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 405', function () { pm.response.to.have.status(405); });",
+         "pm.test('Error format is {error, details?}', function () { const j = pm.response.json(); pm.expect(j.error).to.be.a('string'); pm.expect(Object.keys(j).every(k => ['error','details'].includes(k))).to.be.true; });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "DELETE",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/products",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "products"
+       ]
+      },
+      "description": ""
+     }
+    },
+    {
+     "name": "Health check",
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+         "pm.test('DB ok', function () { pm.expect(pm.response.json().status).to.eql('ok'); });"
+        ]
+       }
+      }
+     ],
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/health",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "health"
+       ]
+      },
+      "description": "",
+      "auth": {
+       "type": "noauth"
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "variable": [
+  {
+   "key": "base_url",
+   "value": "http://127.0.0.1:5000"
+  },
+  {
+   "key": "token",
+   "value": ""
+  },
+  {
+   "key": "staff_token",
+   "value": ""
+  }
+ ],
+ "auth": {
+  "type": "bearer",
+  "bearer": [
+   {
+    "key": "token",
+    "value": "{{token}}",
+    "type": "string"
+   }
+  ]
+ }
+}
