@@ -71,3 +71,22 @@ def test_staff_marks_done_once(client, owner, staff, world):
 
 def test_bad_status_filter(client, staff):
     assert client.get("/notifications?status=bogus", headers=staff).status_code == 400
+
+
+def test_remove_one_done_alert(client, owner, staff, world):
+    nid = client.post("/notifications", json={"product_id": world.neem}, headers=owner).get_json()["notification_id"]
+    assert client.delete(f"/notifications/{nid}", headers=staff).status_code == 409      # still open: cannot be removed
+    client.post(f"/notifications/{nid}/done", headers=staff)
+    assert client.delete(f"/notifications/{nid}", headers=owner).status_code == 200
+    assert client.delete(f"/notifications/{nid}", headers=owner).status_code == 404
+    assert client.get("/notifications", headers=staff).get_json() == []
+
+
+def test_clear_all_done_keeps_open_ones(client, owner, staff, world):
+    a = client.post("/notifications", json={"product_id": world.neem}, headers=owner).get_json()["notification_id"]
+    client.post("/notifications", json={"product_id": world.mono}, headers=owner)
+    client.post(f"/notifications/{a}/done", headers=staff)
+    r = client.delete("/notifications/done", headers=staff)
+    assert r.status_code == 200 and r.get_json()["removed"] == 1
+    left = client.get("/notifications", headers=staff).get_json()
+    assert len(left) == 1 and left[0]["status"] == "open"

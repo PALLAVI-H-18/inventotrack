@@ -455,6 +455,34 @@ def finish_notification(notification_id):
     return jsonify({"message": "Marked as done"})
 
 
+@app.route("/notifications/<int:notification_id>", methods=["DELETE"])
+@jwt_required()
+def delete_notification(notification_id):
+    """Remove ONE finished alert from the list. Open alerts cannot be deleted (they must be finished first)."""
+    db = database.get_db()
+    db.begin_write()
+    row = db.execute("SELECT status FROM notifications WHERE notification_id = ?", (notification_id,)).fetchone()
+    if row is None:
+        raise ApiError("Notification not found", 404)
+    if row["status"] != "done":
+        raise ApiError("Only finished alerts can be removed. Mark it done first.", 409)
+    db.execute("DELETE FROM notifications WHERE notification_id = ?", (notification_id,))
+    db.commit()
+    return jsonify({"message": "Alert removed"})
+
+
+@app.route("/notifications/done", methods=["DELETE"])
+@jwt_required()
+def clear_done_notifications():
+    """Remove ALL finished alerts at once."""
+    db = database.get_db()
+    db.begin_write()
+    removed = db.execute("SELECT COUNT(*) AS c FROM notifications WHERE status = 'done'").fetchone()["c"]
+    db.execute("DELETE FROM notifications WHERE status = 'done'")
+    db.commit()
+    return jsonify({"message": "Finished alerts removed", "removed": int(removed)})
+
+
 # =========================================================
 # DASHBOARD
 # =========================================================

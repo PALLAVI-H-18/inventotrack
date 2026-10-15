@@ -5,12 +5,12 @@ OWNER_ONLY = [
     ("GET", "/forecast/1"), ("GET", "/forecast/history/1"), ("GET", "/suggestions"),
     ("GET", "/suggestions/seasonal/1"), ("GET", "/reports/inventory/export"),
     ("GET", "/reports/sales/export"), ("GET", "/reports/compliance/export"),
-    ("POST", "/products"), ("POST", "/batches"), ("POST", "/auth/register"), ("POST", "/notifications"),
+    ("POST", "/products"), ("POST", "/batches"), ("POST", "/auth/register"), ("POST", "/notifications")
 ]
 ANY_LOGIN = [
     ("GET", "/products"), ("GET", "/restricted-pesticides"), ("GET", "/dashboard/low-stock"),
     ("GET", "/dashboard/out-of-stock"), ("GET", "/dashboard/expiring"), ("GET", "/products/1/batches"),
-    ("GET", "/auth/me"), ("GET", "/notifications")
+    ("GET", "/auth/me"), ("GET", "/notifications"), ("DELETE", "/notifications/done"),
 ]
 
 
@@ -19,7 +19,7 @@ def call(client, method, path, headers=None):
 
 
 def test_every_protected_route_rejects_missing_token(client):
-    for method, path in OWNER_ONLY + ANY_LOGIN + [("POST", "/sales"), ("POST", "/notifications/1/done")]:
+    for method, path in OWNER_ONLY + ANY_LOGIN + [("POST", "/sales"), ("POST", "/notifications/1/done"), ("DELETE", "/notifications/1")]:
         response = call(client, method, path)
         assert response.status_code == 401, (method, path, response.status_code)
         assert response.get_json() == {"error": "Login required. Please log in first."}
