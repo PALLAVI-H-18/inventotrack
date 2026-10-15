@@ -93,9 +93,9 @@ export default function Dashboard() {
         <StatCard label="Expiring in 30 days" value={expiring.length} tone="amber" hint="batches" />
         {isOwner && summary && (
           <>
-            <StatCard label="Inventory value" value={formatINR(summary.total_inventory_value)} tone="brand" hint="sellable stock" />
+            <StatCard label="Inventory value" value={formatINR(summary.total_inventory_value, 0)} tone="brand" hint="sellable stock" />
             <StatCard label="Expired stock" value={summary.expired_batch_count} tone="red" hint="batches still on shelf" />
-            <StatCard label="Value lost to expiry" value={formatINR(summary.expired_stock_value)} tone="red" />
+            <StatCard label="Value lost to expiry" value={formatINR(summary.expired_stock_value, 0)} tone="red" />
           </>
         )}
       </div>

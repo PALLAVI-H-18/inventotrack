@@ -14,11 +14,13 @@ export function todayStr() {
 }
 
 // 718402.44 -> "₹7,18,402.44"
-export function formatINR(value) {
+// formatINR(718402.44, 0) -> "₹7,18,402" (no paise, shorter - used on the small dashboard cards)
+export function formatINR(value, digits = 2) {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
-    maximumFractionDigits: 2,
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
   }).format(value || 0)
 }
 
@@ -53,9 +55,9 @@ export function StatCard({ label, value, tone = 'slate', hint }) {
     brand: 'text-brand-700',
   }
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <p className="text-sm font-medium text-slate-500">{label}</p>
-      <p className={`mt-2 text-3xl font-bold ${tones[tone]}`}>{value}</p>
+      <p className={`mt-2 break-words text-2xl font-bold xl:text-3xl ${tones[tone]}`}>{value}</p>
       {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
     </div>
   )
