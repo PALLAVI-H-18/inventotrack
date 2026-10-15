@@ -63,7 +63,23 @@ CREATE TABLE IF NOT EXISTS restricted_pesticides (
     reason TEXT
 );
 
+-- NOTIFICATIONS: the owner asks staff to bring a low/out-of-stock product to the shop
+CREATE TABLE IF NOT EXISTS notifications (
+    notification_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL,
+    message TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',     -- 'open' until staff mark it done
+    created_by INTEGER,                      -- the owner who sent it
+    created_at TEXT NOT NULL,
+    done_by INTEGER,                         -- the user who marked it done
+    done_at TEXT,
+    FOREIGN KEY (product_id) REFERENCES products (product_id),
+    FOREIGN KEY (created_by) REFERENCES users (user_id),
+    FOREIGN KEY (done_by) REFERENCES users (user_id)
+);
+
 -- INDEXES: make the common look-ups fast (safe to run again and again)
 CREATE INDEX IF NOT EXISTS idx_batches_product ON batches (product_id, expiry_date);
 CREATE INDEX IF NOT EXISTS idx_sales_product_date ON sales (product_id, sale_date);
 CREATE INDEX IF NOT EXISTS idx_sales_date ON sales (sale_date);
+CREATE INDEX IF NOT EXISTS idx_notifications_status ON notifications (status, created_at);

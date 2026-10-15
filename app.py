@@ -271,7 +271,11 @@ def add_batch():
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (product_id, supplier_id, batch_no, quantity, quantity, price, purchase_date, expiry_date), "batch_id")
     db.commit()
-    return jsonify({"message": "Batch added successfully", "batch_id": new_id}), 201
+    total_stock = db.execute("""
+        SELECT COALESCE(SUM(quantity_remaining), 0) AS total FROM batches
+        WHERE product_id = ? AND expiry_date >= ?
+    """, (product_id, stock.today_str())).fetchone()["total"]
+    return jsonify({"message": "Batch added successfully", "batch_id": new_id, "total_stock": int(total_stock)}), 201
 
 
 @app.route("/products/<int:product_id>/batches", methods=["GET"])
@@ -354,7 +358,101 @@ def record_sale():
         "product_name": product["name"],
         "total_quantity_sold": quantity_sold,
         "batches_used": batches_used,
+        "remaining_stock": total_available - quantity_sold,     # what is left (non-expired) after this sale
+        "stock_status": stock.stock_status(total_available - quantity_sold, product["min_stock_level"]),
     }), 201
+
+
+# =========================================================
+# NOTIFICATIONS  (owner asks staff to bring low / out-of-stock products to the shop)
+# =========================================================
+def now_str():
+    return datetime.now(stock.IST).strftime("%Y-%m-%d %H:%M:%S")
+
+
+NOTIFICATION_SELECT = """
+    SELECT n.notification_id, n.product_id, p.name AS product_name, p.min_stock_level,
+           n.message, n.status, n.created_at, n.done_at,
+           c.name AS created_by_name, d.name AS done_by_name
+    FROM notifications n
+    JOIN products p ON p.product_id = n.product_id
+    LEFT JOIN users c ON c.user_id = n.created_by
+    LEFT JOIN users d ON d.user_id = n.done_by
+"""
+
+
+def add_stock_info(db, rows):
+    """Attach the CURRENT stock of each product, so staff see up-to-date numbers."""
+    by_id = {p["product_id"]: p for p in stock.get_products_with_stock(db)}
+    result = []
+    for row in rows:
+        item = dict(row)
+        current = by_id.get(item["product_id"])
+        item["current_stock"] = current["total_quantity"] if current else 0
+        item["stock_status"] = current["status"] if current else "out_of_stock"
+        result.append(item)
+    return result
+
+
+@app.route("/notifications", methods=["POST"])
+@owner_required
+def create_notification():
+    f = Fields(json_body())
+    product_id = f.integer("product_id", required=True, minimum=1)
+    note = f.text("message", max_len=300, default="")
+    f.done()
+
+    db = database.get_db()
+    db.begin_write()
+    product = get_product_or_404(db, product_id)
+    if db.execute("SELECT 1 FROM notifications WHERE product_id = ? AND status = 'open'", (product_id,)).fetchone():
+        raise ApiError("An alert for this product is already open.", 409)
+
+    current = next(p for p in stock.get_products_with_stock(db) if p["product_id"] == product_id)
+    if current["status"] == "out_of_stock":
+        text = f"{product['name']} is OUT OF STOCK. Please bring it to the shop."
+    elif current["status"] == "low_stock":
+        text = f"{product['name']} is running low ({current['total_quantity']} left). Please bring more to the shop."
+    else:
+        text = f"Please bring more {product['name']} to the shop."
+    if note:
+        text += f" Note: {note}"
+
+    new_id = db.insert("""
+        INSERT INTO notifications (product_id, message, status, created_by, created_at)
+        VALUES (?, ?, 'open', ?, ?)
+    """, (product_id, text, int(get_jwt_identity()), now_str()), "notification_id")
+    db.commit()
+    return jsonify({"message": "Alert sent to staff", "notification_id": new_id, "text": text}), 201
+
+
+@app.route("/notifications", methods=["GET"])
+@jwt_required()
+def list_notifications():
+    status = request.args.get("status", "all")
+    if status not in ("open", "done", "all"):
+        raise ApiError("status must be open, done or all", 400)
+    db = database.get_db()
+    sql = NOTIFICATION_SELECT + (" WHERE n.status = ?" if status != "all" else "")
+    sql += " ORDER BY (n.status = 'open') DESC, n.created_at DESC, n.notification_id DESC LIMIT 100"
+    rows = db.execute(sql, (status,) if status != "all" else ()).fetchall()
+    return jsonify(add_stock_info(db, rows))
+
+
+@app.route("/notifications/<int:notification_id>/done", methods=["POST"])
+@jwt_required()
+def finish_notification(notification_id):
+    db = database.get_db()
+    db.begin_write()
+    row = db.execute("SELECT status FROM notifications WHERE notification_id = ?", (notification_id,)).fetchone()
+    if row is None:
+        raise ApiError("Notification not found", 404)
+    if row["status"] == "done":
+        raise ApiError("This alert is already marked done.", 409)
+    db.execute("UPDATE notifications SET status = 'done', done_by = ?, done_at = ? WHERE notification_id = ?",
+               (int(get_jwt_identity()), now_str(), notification_id))
+    db.commit()
+    return jsonify({"message": "Marked as done"})
 
 
 # =========================================================

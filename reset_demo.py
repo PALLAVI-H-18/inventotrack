@@ -17,7 +17,7 @@ import db as database
 import seed_demo
 import setup_database
 
-TABLES = ["sales", "batches", "products", "suppliers", "restricted_pesticides"]    # children first
+TABLES = ["notifications", "sales", "batches", "products", "suppliers", "restricted_pesticides"]    # children first
 
 
 def describe_target():

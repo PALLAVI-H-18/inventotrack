@@ -25,17 +25,22 @@ def get_products_with_stock(db):
     rows = db.execute("""
         SELECT p.product_id, p.name, p.brand, p.category, p.season,
                p.min_stock_level, p.is_restricted,
-               COALESCE(SUM(b.quantity_remaining), 0) AS total_quantity
+               COALESCE(SUM(b.quantity_remaining), 0) AS total_quantity,
+               (SELECT COALESCE(SUM(s.quantity_sold), 0) FROM sales s WHERE s.product_id = p.product_id) AS total_sold,
+               (SELECT COALESCE(SUM(s.quantity_sold), 0) FROM sales s
+                 WHERE s.product_id = p.product_id AND s.sale_date LIKE ?) AS sold_today
         FROM products p
         LEFT JOIN batches b ON p.product_id = b.product_id AND b.expiry_date >= ?
         GROUP BY p.product_id
         ORDER BY p.product_id
-    """, (today_str(),)).fetchall()
+    """, (today_str() + "%", today_str())).fetchall()
 
     products = []
     for row in rows:
         item = dict(row)
         item["total_quantity"] = int(item["total_quantity"])
+        item["total_sold"] = int(item["total_sold"])
+        item["sold_today"] = int(item["sold_today"])
         item["status"] = stock_status(item["total_quantity"], item["min_stock_level"])
         products.append(item)
     return products

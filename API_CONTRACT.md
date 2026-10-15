@@ -287,6 +287,19 @@ Errors are JSON (see below), for example 400 for a bad date and 403 for staff.
 
 ---
 
+## Restock alerts (Oct 15) - owner sends, staff receive
+
+| Route | Who | What it does |
+|---|---|---|
+| `POST /notifications` `{product_id, message?}` | owner | Sends an alert to staff. The text is built automatically ("X is OUT OF STOCK..." or "X is running low (3 left)...") plus the optional note. 409 if an alert for that product is already open. |
+| `GET /notifications?status=open\|done\|all` | any login | Alerts with the product's CURRENT stock (`current_stock`, `stock_status`). Open ones come first. |
+| `POST /notifications/<id>/done` | any login | Marks the alert done ("brought to the shop"). 409 if already done. |
+
+Also new: `GET /products` rows have `total_sold` and `sold_today`; `POST /sales` returns `remaining_stock` and `stock_status`; `POST /batches` returns `total_stock`.
+New table `notifications` (created by `python setup_database.py`).
+
+---
+
 ## One error format everywhere  - Oct 16
 
 Every error, from every route, has this shape:
